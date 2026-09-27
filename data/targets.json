@@ -1,0 +1,141 @@
+{
+  "schema_version": "1.0",
+  "description": "Extraterrestrial base-site targets scored against the Earth predictor stack. Every numeric claim carries its own dataset_id and source_url; the target-level source_url is the single best overall reference for the site. Values are quoted in the same units as the Earth predictors stored in cache/predictors.zarr.",
+  "units_note": "Temperature ranges are differences, so kelvin and degrees Celsius are numerically identical; they are recorded as K. Elevation is relative to each body's own datum (Earth mean sea level, Moon mean lunar radius, Mars areoid) and is NOT cross-body comparable at face value - see README section 'Limitations'.",
+  "targets": [
+    {
+      "id": "lunar_south_pole",
+      "name": "Lunar South Pole (Shackleton rim)",
+      "short_name": "Lunar South Pole",
+      "body": "Moon",
+      "latitude": -90.0,
+      "longitude": 0.0,
+      "source_url": "https://iopscience.iop.org/article/10.3847/PSJ/aca590",
+      "source_label": "Gawronska et al. (2022), Planet. Sci. J., geologic context and EVA targets at the lunar south pole",
+      "summary": "Artemis III candidate region on the rim of Shackleton crater: permanently shadowed volatile cold traps adjacent to high-illumination ridges, over extremely rugged polar topography.",
+      "criteria": {
+        "aridity": {
+          "value": 0.0,
+          "unit": "1",
+          "dataset_id": "nssdc_moon_fact_sheet",
+          "source_url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/moonfact.html",
+          "baseline": null,
+          "definition_note": "The Moon has no atmosphere and no liquid-water precipitation, so the liquid-water aridity index (P/PET) is 0 by definition.",
+          "confidence": "high"
+        },
+        "annual_temperature_range": {
+          "value": 100.0,
+          "unit": "K",
+          "dataset_id": "diviner_polar_seasonal_maps",
+          "source_url": "https://agupubs.onlinelibrary.wiley.com/doi/10.1029/2019JE006028",
+          "baseline": "seasonal, summer vs winter",
+          "definition_note": "Lower bound: seasonally shadowed regions poleward of 80 deg S show >=100 K variation in maximum surface temperature between summer and winter (LRO Diviner polar maps). Reported as a lower bound on the annual range, not as a monthly-mean range, so it is not defined identically to the Earth predictor.",
+          "confidence": "medium"
+        },
+        "elevation": {
+          "value": 1290.0,
+          "unit": "m",
+          "dataset_id": "lola_5m_south_polar_dem",
+          "source_url": "https://repository.hou.usra.edu/server/api/core/bitstreams/e56463a3-68f0-49ab-986f-b16a240e2768/content",
+          "baseline": null,
+          "definition_note": "Elevation of the lunar south pole on the rim of Shackleton crater from a LOLA 5 m/pixel DEM, referenced to mean lunar radius. The surrounding Shackleton rim spans roughly 900 to 1760 m.",
+          "confidence": "high"
+        },
+        "slope": {
+          "value": 9.5,
+          "unit": "degrees",
+          "dataset_id": "change2_dem_20m_south_polar",
+          "source_url": "https://www.mdpi.com/2072-4292/14/19/4863",
+          "baseline": "regional mean, 20 m posts",
+          "definition_note": "Mean terrain slope over all terrain poleward of 80 degrees S computed from the Chang'E-2 20 m/pixel DEM (reported range 0 to 80 degrees). This is a regional mean, not a value at the pole point.",
+          "confidence": "high"
+        },
+        "roughness": {
+          "value": 1.0,
+          "unit": "m",
+          "dataset_id": "lola_shackleton_rms_roughness",
+          "source_url": "https://ntrs.nasa.gov/api/citations/20120013758/downloads/20120013758.pdf",
+          "baseline": "5-10 m",
+          "definition_note": "RMS height residual about a least-squares plane fitted to LOLA profiles for the exterior, walls, floor and rim of Shackleton crater; all four components are reported as approximately 1 m. Measured at a 5-10 m baseline, about three orders of magnitude shorter than the Earth predictor baseline.",
+          "confidence": "high"
+        },
+        "lst_diurnal_range": {
+          "value": 120.0,
+          "unit": "K",
+          "dataset_id": "diviner_global_diurnal_lst",
+          "source_url": "https://www.sciencedirect.com/science/article/pii/S0019103516304869",
+          "baseline": "noon to midnight",
+          "definition_note": "Noon-to-midnight variation of bolometric brightness temperature at 85 degrees latitude from LRO Diviner (the equatorial value is about 290 K). Used as the diurnal land-surface-temperature range of the south polar site.",
+          "confidence": "medium"
+        }
+      }
+    },
+    {
+      "id": "jezero_crater",
+      "name": "Jezero Crater, Mars",
+      "short_name": "Jezero Crater",
+      "body": "Mars",
+      "latitude": 18.44,
+      "longitude": 77.45,
+      "source_url": "https://www.esa.int/ESA_Multimedia/Images/2021/02/Topographic_map_of_Jezero_crater_and_surrounds",
+      "source_label": "ESA topographic map of Jezero crater and surrounds (HRSC / MOLA)",
+      "summary": "Perseverance rover landing site: a Noachian lake basin with two fluvial deltas on the western edge of the Isidis impact structure, roughly 2.6 km below the Mars areoid.",
+      "criteria": {
+        "aridity": {
+          "value": 0.0,
+          "unit": "1",
+          "dataset_id": "mars_modern_water_cycle_review",
+          "source_url": "https://www.annualreviews.org/content/journals/10.1146/annurev-earth-072420-071823",
+          "baseline": null,
+          "definition_note": "Modern Mars has no stable liquid water at the surface and no liquid-water precipitation, so the liquid-water aridity index (P/PET) is 0; only vapour and ice cycles operate.",
+          "confidence": "high"
+        },
+        "annual_temperature_range": {
+          "value": 22.0,
+          "unit": "K",
+          "dataset_id": "meda_mars2020_my36",
+          "source_url": "https://doi.org/10.1029/2024JE008385",
+          "baseline": "seasonal, one Martian year",
+          "definition_note": "Seasonal amplitude of daily-mean ground temperature at Jezero over Mars Year 36: daily means span 210 to 232 K. At 1.45 m the daily-mean amplitude is 16 K and the annual amplitude of daily-maximum air temperature reaches 35 K.",
+          "confidence": "high"
+        },
+        "elevation": {
+          "value": -2600.0,
+          "unit": "m",
+          "dataset_id": "esa_hrsc_jezero_topography",
+          "source_url": "https://www.esa.int/ESA_Multimedia/Images/2021/02/Topographic_map_of_Jezero_crater_and_surrounds",
+          "baseline": null,
+          "definition_note": "Jezero crater floor elevation below the Mars areoid (a notional equipotential surface analogous to sea level). ESA reports approximately -2600 m; DLR and FU Berlin report -2700 m for the floor; the Mars 2020 landing-ellipse centre is quoted at -2550 m.",
+          "confidence": "high"
+        },
+        "slope": {
+          "value": 3.4,
+          "unit": "degrees",
+          "dataset_id": "hirise_jezero_reference_dtm",
+          "source_url": "https://www.mdpi.com/2072-4292/13/17/3511",
+          "baseline": "50 m",
+          "definition_note": "RMS adirectional slope over a 50 m baseline for the smooth Jezero crater-floor sub-area of the Mars 2020 landing site, from the HiRISE reference DTM (Kirk et al. 2021, Table 2). The full HiRISE study area gives 7.09 degrees and the crater rim 11.29 degrees at the same baseline.",
+          "confidence": "high"
+        },
+        "roughness": {
+          "value": 1.0,
+          "unit": "m",
+          "dataset_id": "mola_terrain_rms_northern_lowlands",
+          "source_url": "https://pgda.gsfc.nasa.gov/products/62",
+          "baseline": "~75 m MOLA footprint",
+          "definition_note": "PROXY: no Jezero-specific RMS-height roughness is published. This is the modal MOLA terrain RMS roughness reported for the Martian northern lowlands; Jezero sits on western Isidis Planitia, which is part of that unit. Treat as a regional proxy, not a site measurement.",
+          "confidence": "low"
+        },
+        "lst_diurnal_range": {
+          "value": 86.0,
+          "unit": "K",
+          "dataset_id": "meda_tirs_jezero_ground_temperature",
+          "source_url": "https://helda.helsinki.fi/bitstreams/e4a9b306-b09a-45e8-96a8-e2a07a56d716/download",
+          "baseline": "single sol",
+          "definition_note": "Ground-skin temperature range on sol 189 (Ls 89-98 deg, 191 to 277 K), a high-insolation season. The low-insolation case on sols 138-152 gives 56 K (204 to 260 K), so 86 K is the upper end of the observed per-sol diurnal range at Jezero.",
+          "confidence": "medium"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+# Runtime
+fastapi==0.141.1
+numpy==2.3.5
+pillow==11.1.0
+pydantic==2.10.5
+rasterio==1.5.1
+scipy==1.16.3
+starlette==1.6.0
+zarr==3.4.0
+
+# Server
+uvicorn==0.53.0
+
+# Tests and lint
+httpx==0.28.1
+pytest==9.1.1
+ruff==0.16.9

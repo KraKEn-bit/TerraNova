@@ -1,0 +1,68 @@
+{
+  "schema_version": "1.0",
+  "note": "Fixed normalisation ranges used by src/compute/similarity.py. Similarity for criterion k is s_k = clip(1 - |x_k - t_k| / (max_k - min_k), 0, 1). Ranges are chosen once at build time from the observed Earth predictor distribution together with the envelope of the values held in data/targets.json, are stored in the zarr root attributes, and are never derived from the data being scored, so scores are reproducible and comparable between runs. Where the Earth distribution extends far past the target values - aridity, where every target is 0 - the range is deliberately narrowed to the part of the distribution that can still match a target, which keeps resolution near the target instead of saturating.",
+  "criteria": {
+    "aridity": {
+      "label": "Aridity index",
+      "unit": "1",
+      "description": "Liquid-water aridity index, precipitation / potential evapotranspiration. 0 = hyper-arid (no effective precipitation).",
+      "min": 0.0,
+      "max": 1.0,
+      "source_dataset_id": "global_ai_et0_v3_1",
+      "source_url": "https://doi.org/10.6084/m9.figshare.7504448"
+    },
+    "annual_temperature_range": {
+      "label": "Annual temperature range",
+      "unit": "K",
+      "description": "Warmest month mean minus coldest month mean near-surface temperature.",
+      "min": 0.0,
+      "max": 160.0,
+      "source_dataset_id": "worldclim_2_1_tavg",
+      "source_url": "https://doi.org/10.1038/s41597-018-0002-1"
+    },
+    "elevation": {
+      "label": "Elevation",
+      "unit": "m",
+      "description": "Mean surface elevation of the grid cell relative to the body's datum (Earth: mean sea level; Moon: mean lunar radius; Mars: areoid).",
+      "min": -3000.0,
+      "max": 9000.0,
+      "source_dataset_id": "aws_terrain_tiles_terrarium",
+      "source_url": "https://registry.opendata.aws/terrain-tiles/"
+    },
+    "slope": {
+      "label": "Regional slope",
+      "unit": "degrees",
+      "description": "Magnitude of the horizontal gradient of the 0.5-degree-smoothed elevation field, in degrees; one value per cell.",
+      "min": 0.0,
+      "max": 10.0,
+      "source_dataset_id": "aws_terrain_tiles_terrarium",
+      "source_url": "https://registry.opendata.aws/terrain-tiles/"
+    },
+    "roughness": {
+      "label": "Surface roughness",
+      "unit": "m",
+      "description": "Root-mean-square height residual of the digital elevation model about a least-squares plane fitted over a 3x3 neighbourhood of the 1/12-degree DEM analysis grid (~9.3 km spacing at the equator, ~28 km window), block-averaged onto the cell.",
+      "min": 0.0,
+      "max": 400.0,
+      "source_dataset_id": "aws_terrain_tiles_terrarium",
+      "source_url": "https://registry.opendata.aws/terrain-tiles/"
+    },
+    "lst_diurnal_range": {
+      "label": "LST diurnal range",
+      "unit": "K",
+      "description": "Long-term (2000-2020) mean daytime MODIS land-surface temperature minus long-term mean nighttime MODIS land-surface temperature, averaged onto the cell.",
+      "min": 0.0,
+      "max": 130.0,
+      "source_dataset_id": "zenodo_modis_lst_1km_2000_2020",
+      "source_url": "https://doi.org/10.5281/zenodo.6458406"
+    }
+  },
+  "weights": {
+    "aridity": 1.0,
+    "annual_temperature_range": 1.0,
+    "elevation": 1.0,
+    "slope": 1.0,
+    "roughness": 1.0,
+    "lst_diurnal_range": 1.0
+  }
+}

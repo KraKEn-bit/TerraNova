@@ -1,0 +1,120 @@
+{
+  "attributes": {
+    "schema_version": "1.0",
+    "created_utc": "2026-09-27T05:21:34+00:00",
+    "normalization": {
+      "aridity": {
+        "label": "Aridity index",
+        "unit": "1",
+        "description": "Liquid-water aridity index, precipitation / potential evapotranspiration. 0 = hyper-arid (no effective precipitation).",
+        "min": 0.0,
+        "max": 1.0,
+        "source_dataset_id": "global_ai_et0_v3_1",
+        "source_url": "https://doi.org/10.6084/m9.figshare.7504448"
+      },
+      "annual_temperature_range": {
+        "label": "Annual temperature range",
+        "unit": "K",
+        "description": "Warmest month mean minus coldest month mean near-surface temperature.",
+        "min": 0.0,
+        "max": 160.0,
+        "source_dataset_id": "worldclim_2_1_tavg",
+        "source_url": "https://doi.org/10.1038/s41597-018-0002-1"
+      },
+      "elevation": {
+        "label": "Elevation",
+        "unit": "m",
+        "description": "Mean surface elevation of the grid cell relative to the body's datum (Earth: mean sea level; Moon: mean lunar radius; Mars: areoid).",
+        "min": -3000.0,
+        "max": 9000.0,
+        "source_dataset_id": "aws_terrain_tiles_terrarium",
+        "source_url": "https://registry.opendata.aws/terrain-tiles/"
+      },
+      "slope": {
+        "label": "Regional slope",
+        "unit": "degrees",
+        "description": "Magnitude of the horizontal gradient of the 0.5-degree-smoothed elevation field, in degrees; one value per cell.",
+        "min": 0.0,
+        "max": 10.0,
+        "source_dataset_id": "aws_terrain_tiles_terrarium",
+        "source_url": "https://registry.opendata.aws/terrain-tiles/"
+      },
+      "roughness": {
+        "label": "Surface roughness",
+        "unit": "m",
+        "description": "Root-mean-square height residual of the digital elevation model about a least-squares plane fitted over a 3x3 neighbourhood of the 1/12-degree DEM analysis grid (~9.3 km spacing at the equator, ~28 km window), block-averaged onto the cell.",
+        "min": 0.0,
+        "max": 400.0,
+        "source_dataset_id": "aws_terrain_tiles_terrarium",
+        "source_url": "https://registry.opendata.aws/terrain-tiles/"
+      },
+      "lst_diurnal_range": {
+        "label": "LST diurnal range",
+        "unit": "K",
+        "description": "Long-term (2000-2020) mean daytime MODIS land-surface temperature minus long-term mean nighttime MODIS land-surface temperature, averaged onto the cell.",
+        "min": 0.0,
+        "max": 130.0,
+        "source_dataset_id": "zenodo_modis_lst_1km_2000_2020",
+        "source_url": "https://doi.org/10.5281/zenodo.6458406"
+      }
+    },
+    "weights": {
+      "aridity": 1.0,
+      "annual_temperature_range": 1.0,
+      "elevation": 1.0,
+      "slope": 1.0,
+      "roughness": 1.0,
+      "lst_diurnal_range": 1.0
+    },
+    "grid": {
+      "crs": "EPSG:4326",
+      "shape": [
+        360,
+        720
+      ],
+      "cell_degrees": 0.5,
+      "row0_centre_latitude": 89.75,
+      "column0_centre_longitude": -179.75,
+      "ordering": "row-major, north to south then west to east",
+      "sub_grid": {
+        "shape": [
+          2160,
+          4320
+        ],
+        "cell_degrees": 0.08333333333333333,
+        "purpose": "1/12 degree DEM analysis grid used for slope and roughness"
+      }
+    },
+    "land_rule": "A cell is a candidate when at least 50% of its area is land, where land is the fraction of the 30 arc-second Aridity Index pixels that carry a valid value (the source encodes open ocean as 0 and fill as 65535). Every predictor is set to NaN below that threshold, so similarity.valid_mask is the land mask.",
+    "sources": [
+      {
+        "dataset_id": "aws_terrain_tiles_terrarium",
+        "title": "Mapzen/AWS Terrain Tiles, Terrarium RGB encoding, zoom 4",
+        "url": "https://registry.opendata.aws/terrain-tiles/",
+        "local_files": "cache/raw/terrarium_4_*.png (256 tiles)"
+      },
+      {
+        "dataset_id": "global_ai_et0_v3_1",
+        "title": "Global Aridity Index and Potential Evapotranspiration (ET0) Database v3.1",
+        "url": "https://doi.org/10.6084/m9.figshare.7504448",
+        "local_files": "Global-AI_ET0__annual_v3_1.zip",
+        "note": "AI is stored as integer x 10000; the build multiplies by 1e-4."
+      },
+      {
+        "dataset_id": "worldclim_2_1_tavg",
+        "title": "WorldClim 2.1 monthly average temperature, 10 arc-min, 1970-2000",
+        "url": "https://doi.org/10.1038/s41597-018-0002-1",
+        "local_files": "wc2.1_10m_tavg.zip"
+      },
+      {
+        "dataset_id": "zenodo_modis_lst_1km_2000_2020",
+        "title": "Long-term MODIS LST day-time and night-time temperatures at 1 km, 2000-2020",
+        "url": "https://doi.org/10.5281/zenodo.6458406",
+        "local_files": "zenodo_lst_day.tif, zenodo_lst_night.tif",
+        "note": "int16 x 0.02 K; the predictor is (day - night) x 0.02."
+      }
+    ]
+  },
+  "zarr_format": 3,
+  "node_type": "group"
+}

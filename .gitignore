@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+.env
+
+# Raw downloads (~1.1 GB) are reproducible from src/acquire. The derived
+# arrays and the predictor stack stay in the repo so the demo, the tests and
+# `--stage assemble` all run with OFFLINE=1.
+cache/raw/
+
+# Legacy prototype kept out of this repository's history.
+prototype_v1/

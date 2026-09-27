@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Earth Analogue Finder - test UI</title>
+<style>
+  :root {
+    --bg: #0b0f14; --panel: #141a22; --line: #232c38; --ink: #dce5ef;
+    --dim: #8695a8; --accent: #5cc8ff; --good: #57d18a; --bad: #ff6b6b;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  header { display: flex; gap: 16px; align-items: baseline; padding: 12px 16px;
+           border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  h1 { font-size: 15px; margin: 0; letter-spacing: .04em; }
+  .badge { padding: 1px 7px; border: 1px solid var(--line); border-radius: 10px;
+           color: var(--dim); font-size: 11px; }
+  .badge.on { color: var(--good); border-color: var(--good); }
+  .badge.off { color: var(--bad); border-color: var(--bad); }
+  main { display: grid; grid-template-columns: 340px 1fr; gap: 14px; padding: 14px 16px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+           padding: 12px; }
+  .panel h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .1em;
+              color: var(--dim); margin: 0 0 10px; }
+  label.field { display: block; color: var(--dim); margin-bottom: 8px; font-size: 11px;
+                text-transform: uppercase; letter-spacing: .08em; }
+  select, input[type=number] { width: 100%; background: #0d1218; color: var(--ink);
+    border: 1px solid var(--line); border-radius: 4px; padding: 6px; font: inherit; }
+  .crit { border-top: 1px solid var(--line); padding: 9px 0; }
+  .crit:first-of-type { border-top: 0; }
+  .crit .head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+  .crit .val { color: var(--accent); }
+  .crit .unit { color: var(--dim); font-size: 11px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .sub { display: flex; gap: 8px; align-items: center; }
+  .sub span { color: var(--dim); font-size: 11px; flex: 1; }
+  .sub input { width: 74px; }
+  button { background: var(--accent); color: #04121c; border: 0; border-radius: 4px;
+           padding: 8px 14px; font: inherit; font-weight: 700; cursor: pointer; }
+  button.ghost { background: transparent; color: var(--dim); border: 1px solid var(--line); }
+  .row { display: flex; gap: 8px; }
+  .stack { display: flex; flex-direction: column; gap: 14px; }
+  canvas { display: block; width: 100%; background: #05080b;
+           border: 1px solid var(--line); border-radius: 4px; cursor: crosshair; image-rendering: pixelated; }
+  .legend { display: flex; align-items: center; gap: 8px; color: var(--dim);
+            font-size: 11px; margin-top: 6px; }
+  .legend .bar { height: 9px; flex: 1; border-radius: 3px;
+    background: linear-gradient(90deg,#2b1e5c,#2a6fd6,#37c9a5,#e8d44d,#e8642a,#c62828); }
+  .inspector { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr));
+               gap: 6px 14px; margin-top: 10px; font-size: 12px; }
+  .inspector .k { color: var(--dim); }
+  .inspector .v { color: var(--ink); }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { text-align: left; color: var(--dim); font-weight: 400; font-size: 11px;
+       text-transform: uppercase; letter-spacing: .08em; border-bottom: 1px solid var(--line);
+       padding: 6px 8px; }
+  td { padding: 7px 8px; border-bottom: 1px solid #1a2129; vertical-align: top; }
+  td.score { color: var(--accent); font-weight: 700; }
+  .why { color: var(--dim); font-size: 11px; }
+  .claim { margin: 2px 0; }
+  .src { color: var(--dim); }
+  a { color: var(--accent); }
+  details summary { cursor: pointer; color: var(--dim); }
+  .note { color: var(--dim); font-size: 11px; margin-top: 8px; }
+  #status { color: var(--dim); }
+  @media (max-width: 980px) { main { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>EARTH ANALOGUE FINDER</h1>
+  <span class="badge" id="health">checking…</span>
+  <span class="badge" id="offline"></span>
+  <span class="badge" id="cells"></span>
+  <span id="status">load targets to begin</span>
+</header>
+
+<main>
+  <div class="stack">
+    <div class="panel">
+      <h2>Target</h2>
+      <label class="field" for="target">Base site</label>
+      <select id="target"></select>
+      <p class="note" id="targetNote"></p>
+    </div>
+
+    <div class="panel">
+      <h2>Criteria</h2>
+      <div id="criteria"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Ranking</h2>
+      <div class="row">
+        <div style="flex:1"><label class="field" for="topk">Top K</label>
+          <input id="topk" type="number" min="1" max="500" value="20"></div>
+        <div style="flex:1"><label class="field" for="sep">Min separation</label>
+          <input id="sep" type="number" min="0" max="20" value="2"></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button id="run">Score</button>
+        <button id="reset" class="ghost">Reset sliders</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <div style="flex:1"><label class="field" for="layer">Map layer</label>
+          <select id="layer"></select></div>
+      </div>
+      <p class="note">Sliders set the target profile. Weights (0-5) set each criterion's
+      share of the score. The map layer shows the score surface or one raw predictor.</p>
+    </div>
+  </div>
+
+  <div class="stack">
+    <div class="panel">
+      <h2>Map <span style="color:var(--dim);text-transform:none">click a cell to inspect</span></h2>
+      <canvas id="map" width="720" height="360"></canvas>
+      <div class="legend"><span id="legLo">0</span><span class="bar"></span>
+        <span id="legHi">1</span><span id="legName">score</span></div>
+      <div class="inspector" id="inspect"><div class="k">no cell selected</div></div>
+    </div>
+
+    <div class="panel">
+      <h2>Ranked cells</h2>
+      <table>
+        <thead><tr><th>#</th><th>Score</th><th>Place</th><th>Lat, Lon</th><th>Why</th></tr></thead>
+        <tbody id="rows"><tr><td colspan="5" class="why">not scored yet</td></tr></tbody>
+      </table>
+      <p class="note" id="range"></p>
+    </div>
+  </div>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
