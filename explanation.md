@@ -1,6 +1,5 @@
 # Earth Analogue Finder — System Architecture & Implementation Guide
 
-This document provides a comprehensive, structured explanation of the **Earth Analogue Finder** codebase. After reading this guide, you will be able to explain the entire system—its vision, data pipeline, mathematical model, backend API, frontend UI, determinism, and trade-offs—to any stakeholder, judge, or engineer.
 
 ---
 
