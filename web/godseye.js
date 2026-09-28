@@ -145,7 +145,38 @@ export class GodsEye {
       down = null;
       this._click(e);
     });
-    $("geReset").addEventListener("click", () => this._introFlight(false));
+    $("geReset").addEventListener("click", () => this.resetAll());
+  }
+
+  /* Back to how the view opened: camera, sun, surface, height, overlays and tools. */
+  resetAll() {
+    if (!this.mesh) return;
+    this.sunPlaying = false;
+    $("geSunPlay").setAttribute("aria-pressed", "false");
+    $("geSunPlay").textContent = "▶ Play sun";
+    this.drive = null;
+    this.profilePoints = [];
+    this._clearProfile();
+    this._toggleProfileMode(false);
+    this.probeMarker.visible = false;
+    $("geProbe").hidden = true;
+    $("geToolHint").textContent = "Click the terrain to probe any point.";
+
+    this.exaggeration = 2;
+    $("geExag").value = 2;
+    $("geExagValue").textContent = "2.0×";
+    $("geContours").checked = false;
+    this.contour.uOn.value = 0;
+    $("geCell").checked = true;
+    this._applyHeights();   // also rebuilds the cell outline, pin and walls
+    if (this.cellLine) this.cellLine.visible = true;
+
+    // Satellite imagery if any was loaded for this site, else shaded relief.
+    this.imagery = this.imageryAvailable === false ? "relief" : "s2";
+    this._applyMaterial();
+    this.sun = { ...SUN_PRESETS.earth };
+    this._applySun(false);
+    this._introFlight(false);
   }
 
   /* --------------------------------------------------------------- open */
@@ -453,6 +484,7 @@ export class GodsEye {
       }
     }
     await Promise.all(jobs);
+    this.imageryAvailable = loaded > 0;
     if (!loaded && this.open) {
       this.imagery = "relief";
       this._applyMaterial();
