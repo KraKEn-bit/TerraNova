@@ -38,7 +38,7 @@ def test_new_only_excludes_known_and_near_known_sites():
 
 
 def test_minimum_distance_and_country_cap_spread_results():
-    body = _score(min_distance_km=800, max_per_region=2)
+    body = _score(min_distance_km=800, max_per_country=2)
     rows = body["results"]
     for i, a in enumerate(rows):
         for b in rows[i + 1 :]:
@@ -73,3 +73,24 @@ def test_independent_datasets_agree():
     for c in checks:
         assert c["passed"], f"{c['id']} rho={c['rho']}"
         assert c["cells"] > 50_000
+
+
+def test_shortfall_is_explained_and_countries_use_borders():
+    body = _score(
+        target_id="haworth_psr", top_k=100, new_only=True, min_distance_km=2000, max_per_country=1
+    )
+    assert len(body["results"]) < 100
+    assert body["shortfall"] and "per country" in body["shortfall"]
+    assert _score()["shortfall"] is None
+
+
+def test_region_footprint_covers_the_whole_atacama():
+    # Northern Atacama, ~500 km from the catalogued centre point, is still "known/near".
+    assert validation.novelty(-19.75, -69.75)["status"] in {"known", "near_known"}
+    assert validation.novelty(-18.25, -70.25)["nearest_known"] == "Atacama Desert"
+    assert validation.novelty(-18.25, -70.25)["status"] != "new"
+
+
+def test_relief_image_is_built_on_request():
+    res = client.get("/api/peek.jpg", params={"lat": 40.75, "lon": 91.75})
+    assert res.status_code == 200 and res.headers["content-type"] == "image/jpeg"

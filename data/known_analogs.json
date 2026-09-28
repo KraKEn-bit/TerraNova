@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "purpose": "Known terrestrial analog sites. Used for (1) the novelty badge on ranked results and (2) validation: 'environment' sites are positive controls for the environmental scoring model; 'geology' sites were chosen for rocks or processes the model does not measure, so they are listed for novelty only. Negatives are densely vegetated or humid reference points that no planetary analog should resemble. A target with a 'validation_tag' (the Haworth cold trap uses 'cold_polar') counts the 'environment' sites carrying that tag as positives, whatever body they were first used for.",
-  "provenance": "Coordinates and the analog use of every site are taken from the linked English Wikipedia article (retrieved 2026-09-28). Negatives are editorial reference points, not citations.",
+  "provenance": "Coordinates and the analog use of every site are taken from the linked English Wikipedia article (retrieved 2026-09-28). Negatives are editorial reference points, not citations. Region-sized sites carry an 'extent' so novelty is measured to the whole region, not just its centre point.",
   "sites": [
     {
       "name": "Haughton impact crater, Devon Island",
@@ -55,7 +55,13 @@
       "kind": "environment",
       "use": "Hyper-arid desert used as a testing ground for Mars mission instruments.",
       "source_url": "https://en.wikipedia.org/wiki/Atacama_Desert",
-      "tags": []
+      "tags": [],
+      "extent": {
+        "type": "line",
+        "length_km": 1600,
+        "bearing_deg": 0,
+        "note": "The Atacama ecoregion is a strip of nearly 1,600 km along the coast (Wikipedia, citing WWF); modelled as a north-south line through the catalogued centre."
+      }
     },
     {
       "name": "Mars Desert Research Station, Utah",

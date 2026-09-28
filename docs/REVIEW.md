@@ -25,6 +25,24 @@ Tags: **[VERIFIED]** means checked against a source or by running the code. **[V
 | Map ignored weights and custom profiles | **Fixed** | `/api/score` returns the weighted field (`include_field`). |
 | No novelty badge / validation / export / new UI | **Done** | Known-analog catalog (12 sites), `/api/validation`, `/api/explain`, 3D globe UI, GeoJSON/CSV export. |
 
+## Status update (29 Sep 2026, v3)
+
+Added since v2: God's Eye 3D view with measured terrain statistics, discovery mode
+(new sites only, spread, per-country cap, tolerance bands), Monte Carlo stability and
+leave-one-out sensitivity, cross-dataset consistency checks, 3D hover previews, the latest
+NASA daily view, the Explore scatter, pin-to-compare, search, tour and keyboard shortcuts.
+
+Fixed in the v3 code review: temperature-swing layers no longer use a hot/cold palette;
+the list explains when filters return fewer sites than requested; region-sized analogs
+(the Atacama) have footprints; the per-country cap uses real borders
+(`max_per_country`); the relief image builds on request; the VIIRS label says 250 m;
+links keep discovery settings; the Earth globe no longer spins by itself; the novelty
+filter is precomputed (Haworth ranking 1.8 s to 0.4 s); robustness is pre-warmed at
+startup; `scripts/ui_smoke.mjs` checks the interface in a headless browser.
+
+Still open (need data or a team decision): measured terrain for the lunar sub-sites
+(PGDA 78), harder validation negatives, and an ice-cover layer for the cold-trap target.
+
 The sections below are the original review, kept for the record.
 
 ## 0. The one deadline that matters right now

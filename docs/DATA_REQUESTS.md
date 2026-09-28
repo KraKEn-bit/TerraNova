@@ -47,11 +47,17 @@ Connecting Ridge / Malapert / Shackleton rim.
 
 Each new target in `data/targets.json` needs, **for every criterion**, a value (or an
 Earth percentile) plus `dataset_id`, `source_url`, `definition_note` and `confidence`.
-The tests reject anything uncited. Wanted:
+The tests reject anything uncited.
 
-1. **Lunar PSR cold trap** (Haworth / Shoemaker): Diviner PSR temperatures (Paige et
-   al. 2010, Science), near-zero day-night swing.
-2. **Gale Crater / Mount Sharp**: REMS/MEDA temperature ranges.
+Done: **Malapert Massif**, **Haworth cold trap** and **Gale Crater** are in
+`data/targets.json`. Their terrain values are estimated classes (marked "estimated" in the
+app) until PGDA Product 78 / HiRISE data arrive; Haworth's terrain is "not used".
+
+Still wanted:
+
+1. **Shoemaker cold trap**: Diviner PSR temperatures (Paige et al. 2010, Science).
+2. **Measured temperatures for Gale**: REMS ground temperature (the current values are
+   air temperature from the REMS climate table).
 3. **Lava-tube skylight** (Marius Hills pit, 14.09°N 303.23°E): needs a cave layer on
    the Earth side as well.
 

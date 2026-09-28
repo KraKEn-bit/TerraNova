@@ -753,3 +753,5 @@ body.hide-left .panel-left, body.hide-right .panel-right { display: none; }
   .edge-toggle { display: none; }
   body.hide-left .panel-left, body.hide-right .panel-right { display: block; }
 }
+
+.shortfall { color: var(--accent-strong); }

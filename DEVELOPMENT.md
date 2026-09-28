@@ -24,6 +24,7 @@ Martian target sites.
 - Run:       `OFFLINE=1 uvicorn src.api.main:app --reload`, then open http://127.0.0.1:8000/
 - Data:      `python -m src.acquire.build_predictor_stack`, `python -m src.acquire.calibrate`, `python -m src.acquire.basemaps`
 - Offline demo prefetch (gitignored caches): `python -m src.acquire.tiles --level 1`, `python -m src.acquire.tiles --level 2 --around-top 20`, `python -m src.acquire.sitetiles --top 5`, `python -m src.acquire.peek`
+- UI smoke test (app running on :8000): `node scripts/ui_smoke.mjs`
 - JS syntax check: `node --input-type=module --check < web/app.js` (plain `node --check` misses module errors)
 
 ## Adding a criterion

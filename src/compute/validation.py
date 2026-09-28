@@ -154,13 +154,55 @@ def validate(
     }
 
 
+def _footprint(site: Mapping[str, Any]) -> list[tuple[float, float]]:
+    """Points representing a site: its centre, or a line of points for a region
+    with an ``extent`` (e.g. the 1,600 km Atacama strip), one every ~25 km."""
+    extent = site.get("extent")
+    if not extent or extent.get("type") != "line":
+        return [(site["lat"], site["lon"])]
+    half = float(extent["length_km"]) / 2.0
+    bearing = math.radians(float(extent.get("bearing_deg", 0.0)))
+    n = max(2, int(half / 25.0))
+    points = []
+    for i in range(-n, n + 1):
+        d = half * i / n
+        dlat = d * math.cos(bearing) / 111.32
+        dlon = d * math.sin(bearing) / (111.32 * max(0.05, math.cos(math.radians(site["lat"]))))
+        points.append((site["lat"] + dlat, site["lon"] + dlon))
+    return points
+
+
+def distance_to_site(lat: float, lon: float, site: Mapping[str, Any]) -> float:
+    """Great-circle distance (km) from a point to a site's footprint."""
+    return min(haversine_km(lat, lon, a, b) for a, b in _footprint(site))
+
+
+def distance_grid(catalog: Mapping[str, Any], shape: tuple[int, int] = (360, 720)) -> np.ndarray:
+    """Distance (km) from every cell centre to the nearest catalogued site footprint.
+
+    Vectorised haversine; used to filter "new sites only" without a per-cell loop.
+    """
+    nrow, ncol = shape
+    lat = np.radians(90.0 - (np.arange(nrow) + 0.5) * (180.0 / nrow))[:, None]
+    lon = np.radians(-180.0 + (np.arange(ncol) + 0.5) * (360.0 / ncol))[None, :]
+    best = np.full(shape, np.inf)
+    for site in catalog["sites"]:
+        for plat, plon in _footprint(site):
+            p1, l1 = math.radians(plat), math.radians(plon)
+            a = (
+                np.sin((lat - p1) / 2) ** 2
+                + np.cos(lat) * math.cos(p1) * np.sin((lon - l1) / 2) ** 2
+            )
+            d = 2.0 * EARTH_RADIUS_KM * np.arcsin(np.minimum(1.0, np.sqrt(a)))
+            np.minimum(best, d, out=best)
+    return best
+
+
 def novelty(lat: float, lon: float, catalog: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Whether a location is already a known analog, near one, or new."""
     catalog = catalog or load_catalog()
-    nearest = min(
-        catalog["sites"], key=lambda site: haversine_km(lat, lon, site["lat"], site["lon"])
-    )
-    distance = haversine_km(lat, lon, nearest["lat"], nearest["lon"])
+    nearest = min(catalog["sites"], key=lambda site: distance_to_site(lat, lon, site))
+    distance = distance_to_site(lat, lon, nearest)
     if distance <= KNOWN_KM:
         status = "known"
     elif distance <= NEAR_KM:

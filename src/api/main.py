@@ -17,6 +17,8 @@ import base64
 import json
 import math
 import re
+import threading
+from contextlib import asynccontextmanager
 from typing import Any
 
 import numpy as np
@@ -30,7 +32,7 @@ from starlette.staticfiles import StaticFiles
 from src.acquire import peek, sitetiles, thumbs, tiles
 from src.acquire.download import REPO_ROOT, FetchError, offline_mode
 from src.agents.rationale import explain_cell, load_targets
-from src.compute import datachecks, robustness, terrain, validation
+from src.compute import countries, datachecks, robustness, terrain, validation
 from src.compute.gazetteer import Gazetteer, default_gazetteer
 from src.compute.similarity import (
     CRITERIA,
@@ -76,7 +78,35 @@ def _predictor_sources() -> dict[str, dict[str, str]]:
 
 SOURCES = _predictor_sources()
 
+
+@asynccontextmanager
+async def _lifespan(_: FastAPI):  # type: ignore[no-untyped-def]
+    """Warm the robustness cache for every target under the interface defaults, in a
+    background thread, so the first stability badges appear without a delay."""
+
+    def warm() -> None:
+        try:
+            for target_id in _targets():
+                robustness_report(ScoreRequest(target_id=target_id, **UI_DEFAULTS))
+        except Exception:  # warming is best effort
+            pass
+
+    threading.Thread(target=warm, daemon=True).start()
+    yield
+
+
+# The ranking settings the web interface starts with (web/app.js scoreRequest).
+UI_DEFAULTS: dict[str, Any] = {
+    "top_k": 20,
+    "min_separation_cells": 3,
+    "new_only": True,
+    "min_distance_km": 800.0,
+    "max_per_country": 2,
+    "tolerance": 0.0,
+}
+
 app = FastAPI(
+    lifespan=_lifespan,
     title="Earth Analogue Finder",
     version="2.0.0",
     description=(
@@ -120,7 +150,7 @@ class ScoreRequest(BaseModel):
     new_only: bool = Field(
         default=False, description="Rank only cells more than 500 km from any known analog."
     )
-    max_per_region: int = Field(
+    max_per_country: int = Field(
         default=0, ge=0, le=20, description="At most this many results per country (0 = no cap)."
     )
     min_distance_km: float = Field(
@@ -255,10 +285,23 @@ def _custom_entry(profile: dict[str, float]) -> dict[str, Any]:
     }
 
 
+def _country_of(lat: float, lon: float) -> str | None:
+    """Country whose borders contain the cell (Natural Earth admin-0), if any."""
+    try:
+        return countries.country_at(lat, lon, offline=offline_mode())
+    except Exception:  # boundary file unavailable: fall back to the nearest place
+        return None
+
+
 def _label_for(lat: float, lon: float) -> dict[str, Any]:
     if STATE.gazetteer is None:
         return {"text": f"{lat:.2f}, {lon:.2f}", "kind": "coordinates", "source": "grid"}
-    return STATE.gazetteer.label(lat, lon).as_dict()
+    label = STATE.gazetteer.label(lat, lon).as_dict()
+    # The nearest town can be across a border; the polygon test is authoritative.
+    country = _country_of(lat, lon)
+    if country:
+        label["country"] = country
+    return label
 
 
 def _target_weights(target_id: str | None) -> dict[str, float]:
@@ -297,15 +340,43 @@ def _score(
     return result, profile, target_id
 
 
-def _region_key(lat: float, lon: float) -> str:
-    """Key for the diversity cap: the country of the nearest place (else the region)."""
+_NOVELTY_KM: list[np.ndarray] = []
+
+
+def _novelty_km() -> np.ndarray:
+    """Cached distance from each cell to the nearest known-analog footprint."""
+    if not _NOVELTY_KM:
+        _NOVELTY_KM.append(validation.distance_grid(_catalog()))
+    return _NOVELTY_KM[0]
+
+
+def _shortfall(request: ScoreRequest, returned: int) -> str | None:
+    """Why fewer sites came back than were asked for, if they did."""
+    if returned >= request.top_k:
+        return None
+    limits = []
+    if request.new_only:
+        limits.append("new sites only")
+    if request.min_distance_km:
+        limits.append(f"at least {request.min_distance_km:.0f} km apart")
+    if request.max_per_country:
+        limits.append(f"at most {request.max_per_country} per country")
+    rule = ", ".join(limits) if limits else "the minimum separation"
+    return f"Only {returned} of {request.top_k} requested sites meet these rules: {rule}."
+
+
+def _country_key(lat: float, lon: float) -> str:
+    """Key for the per-country cap: the country containing the cell."""
+    country = _country_of(lat, lon)
+    if country:
+        return country
     label = _label_for(lat, lon)
     return str(label.get("country") or label.get("region") or "unknown")
 
 
 def _rank(result: SimilarityResult, mask: np.ndarray, request: ScoreRequest) -> list[int]:
     """Ranked cell indices with the request's separation, novelty and region rules."""
-    if not request.new_only and not request.max_per_region and not request.min_distance_km:
+    if not request.new_only and not request.max_per_country and not request.min_distance_km:
         return rank_top(
             result.score, mask, k=request.top_k, min_separation_cells=request.min_separation_cells
         )
@@ -331,11 +402,11 @@ def _rank(result: SimilarityResult, mask: np.ndarray, request: ScoreRequest) -> 
             for i in chosen
         ):
             continue
-        if request.new_only and validation.novelty(lat, lon, _catalog())["status"] != "new":
+        if request.new_only and _novelty_km()[row, col] <= validation.NEAR_KM:
             continue
-        if request.max_per_region:
-            region = _region_key(lat, lon)
-            if per_region.get(region, 0) >= request.max_per_region:
+        if request.max_per_country:
+            region = _country_key(lat, lon)
+            if per_region.get(region, 0) >= request.max_per_country:
                 continue
             per_region[region] = per_region.get(region, 0) + 1
         chosen.append(int(index))
@@ -510,10 +581,12 @@ def score(request: ScoreRequest) -> dict[str, Any]:
         "weights": {key: result.weights[key] for key in CRITERIA},
         "score_range": [round(float(finite.min()), 6), round(float(finite.max()), 6)],
         "results": results,
+        "requested": request.top_k,
+        "shortfall": _shortfall(request, len(results)),
         "filters": {
             "tolerance": request.tolerance,
             "new_only": request.new_only,
-            "max_per_region": request.max_per_region,
+            "max_per_country": request.max_per_country,
             "min_distance_km": request.min_distance_km,
             "min_separation_cells": request.min_separation_cells,
         },
@@ -790,7 +863,12 @@ def peek_image(
     clat, clon = thumbs.cell_centre(lat, lon)
     path = peek.image_path(clat, clon)
     if not path.exists():
-        raise HTTPException(status_code=404, detail="call /api/peek first")
+        if abs(clat) > terrain.MAX_MERCATOR_LAT - 1.5:
+            raise HTTPException(status_code=422, detail="no elevation tiles this close to the pole")
+        try:
+            peek.build(clat, clon, offline=offline_mode())
+        except FetchError as exc:
+            raise HTTPException(status_code=404, detail="preview not cached (offline)") from exc
     return FileResponse(
         path, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=86400"}
     )

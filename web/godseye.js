@@ -480,7 +480,8 @@ export class GodsEye {
       <div class="ge-stat wide"><span>Rover-trafficable (under ${data.stats.trafficable_deg}°)</span>
         <b class="num">${pct(c.share_under_15)}</b>
         <div class="bar" role="img" aria-label="${pct(c.share_under_15)} trafficable"><i style="width:${(c.share_under_15 * 100).toFixed(1)}%"></i></div></div>
-      <p class="hint">Measured on ${data.stats.slope_baseline_m} m elevation pixels inside the scored 0.5° cell (orange outline).</p>
+      <p class="hint">Measured on ${data.stats.slope_baseline_m} m elevation pixels inside the scored 0.5° cell (orange outline).
+        The probe, profile and Slope colours use the ${Math.round(data.ground_size_m / 255)} m display grid, so they read a little gentler.</p>
       ${compare}`;
   }
 
@@ -490,7 +491,9 @@ export class GodsEye {
     const b = this.data.bounds;
     const merc = (lat) => Math.log(Math.tan(Math.PI / 4 + (lat * DEG) / 2));
     const y = merc(b.north) + (merc(b.south) - merc(b.north)) * v;
-    return { lat: (2 * Math.atan(Math.exp(y)) - Math.PI / 2) / DEG, lon: b.west + (b.east - b.west) * u };
+    const lon = b.west + (b.east - b.west) * u;
+    // Mosaics next to the dateline can run past +/-180; wrap back for display.
+    return { lat: (2 * Math.atan(Math.exp(y)) - Math.PI / 2) / DEG, lon: ((lon + 540) % 360) - 180 };
   }
 
   _elevationAt(u, v) {

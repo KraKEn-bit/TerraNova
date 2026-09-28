@@ -102,12 +102,15 @@ country). All of this can be changed:
 
 * **New sites only**: hide places within 500 km of a known analog.
 * **Spread results**: minimum great-circle distance between results (0–2000 km).
-* **Max per country**: cap how many results come from one country.
+* **Max per country**: cap how many results come from one country (Natural Earth country
+  borders, so a cell counts for the country it lies in, not the nearest town's).
 * **Permissible error**: turns each criterion's exact target into a band. A cell scores
   100% on that criterion anywhere within `error × confidence noise × range` of the target;
   the band is wider for low-confidence target values.
 
-Validation always runs on the full, unfiltered score map.
+Validation always runs on the full, unfiltered score map. If the rules leave fewer sites
+than you asked for, the list says so ("Only 38 of 100 requested sites meet these rules…").
+All of these settings are saved in the shareable link.
 
 ### How sure are we? (robustness)
 
@@ -122,6 +125,19 @@ Validation always runs on the full, unfiltered score map.
   other. MODIS vs NASA POWER surface swing gives ρ = 0.92, precipitation vs NDVI 0.82,
   latitude vs seasonality 0.60, and roughness vs slope 0.52. A test fails if a data rebuild
   ever breaks this agreement.
+
+### Map colours
+
+| Layer | Colours |
+|---|---|
+| Analog score | orange, brighter = closer match (top half of land only) |
+| Precipitation | teal, dark (dry) to light (wet) |
+| Vegetation | tan (bare) to deep green (dense) |
+| Annual temperature range, day-night swing | white (small swing) to deep orange (large swing): a swing is a size, not a temperature |
+| Mean temperature | blue (cold), grey at 0 °C, red (hot) |
+| Slope, roughness, elevation | pale to dark phthalo green |
+
+Data-layer colours stop at the range that covers 99% of Earth's land.
 
 ### Seeing a place
 
@@ -242,7 +258,9 @@ article. The list also has 8 densely vegetated reference points.
   geology the model does not measure (Apollo geology training at Sudbury, Ries,
   Kilauea; Río Tinto) are listed but not counted. A target can instead select its
   positives by tag: the Haworth cold trap uses the `cold_polar` sites (Haughton, Axel
-  Heiberg, McMurdo Dry Valleys). Current result: **AUC 1.00 for all five targets**.
+  Heiberg, McMurdo Dry Valleys). Current result: **AUC 1.00 for all five targets**. Read it
+  as "the score separates analog-like land from green, humid land", not as proof that every
+  top site is an analog: the samples are small (3-5 analogs x 8 reference points).
 * **Novelty.** A ranked cell is `known` within 150 km of a catalogued site,
   `near_known` within 500 km, and `new` otherwise.
 
@@ -325,6 +343,11 @@ scratch downloads the Zenodo GeoTIFFs (~1 GB).
 7. **The cold trap matches ice sheets.** Earth's coldest, driest land is the East Antarctic
    plateau, which is ice, not ice-cemented regolith. Telling ice sheets apart from ice-free
    permafrost (the Dry Valleys) needs an ice-cover layer.
+8. **NDVI decoding.** GIBS NDVI is decoded to the lower edge of each 0.005-wide colour bin,
+   and "no data", water, ice and snow all read as 0 (no vegetation).
+9. **Novelty is distance-based.** "New" means more than 500 km from any catalogued analog's
+   footprint. The catalog is 12 sites; large regions (the Atacama) carry an extent, but a
+   place can be "new" to this catalog and still have been studied elsewhere.
 
 ## Licence and credits
 

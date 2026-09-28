@@ -6,8 +6,11 @@
  *   precipitation  teal, dry (dark) to wet (light)
  *   vegetation   bare tan to deep green: brown and green are the familiar
  *                "bare ground vs plants" pair
- *   blueRed      diverging blue (low) - neutral grey - red (high), used for the
- *                temperature layers; mean temperature is centred on 0 C
+ *   orangeWhite  single-hue: white (small) to deep orange (large), for the two
+ *                temperature *swing* layers. A swing is a size, not a temperature,
+ *                so it must not look hot or cold.
+ *   blueRed      diverging blue (cold) - neutral grey - red (hot), used only for
+ *                mean temperature, centred on 0 C
  *   phthalo      terrain (slope, roughness, elevation): pale mint to dark
  *                phthalo green (#123524), so rugged, high ground reads dark
  */
@@ -34,6 +37,12 @@ export const RAMPS = {
     [0.75, 54, 132, 48, 0.9],
     [1.0, 12, 84, 28, 0.94],
   ],
+  orangeWhite: [
+    [0.0, 250, 247, 242, 0.62],
+    [0.3, 250, 214, 170, 0.76],
+    [0.6, 242, 150, 72, 0.86],
+    [1.0, 176, 70, 8, 0.94],
+  ],
   blueRed: [
     [0.0, 33, 84, 170, 0.88],
     [0.25, 104, 154, 214, 0.84],
@@ -53,8 +62,8 @@ export const RAMPS = {
 export const LAYER_RAMPS = {
   precipitation: { ramp: "precipitation" },
   vegetation: { ramp: "vegetation" },
-  annual_temperature_range: { ramp: "blueRed" },
-  lst_diurnal_range: { ramp: "blueRed" },
+  annual_temperature_range: { ramp: "orangeWhite" },
+  lst_diurnal_range: { ramp: "orangeWhite" },
   mean_annual_temperature: { ramp: "blueRed", center: 0 },
   slope: { ramp: "phthalo" },
   roughness: { ramp: "phthalo" },

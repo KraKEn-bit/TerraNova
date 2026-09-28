@@ -137,7 +137,7 @@ def main() -> int:
 
     client = TestClient(app)
     points: set[tuple[float, float]] = set()
-    discovery = {"new_only": True, "max_per_region": 2, "min_distance_km": 800}
+    discovery = {"new_only": True, "max_per_country": 2, "min_distance_km": 800}
     for target in client.get("/api/targets").json()["targets"]:
         for extra in ({}, discovery):
             body = client.post(

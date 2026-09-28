@@ -109,7 +109,7 @@ function scoreRequest(extra = {}) {
     min_separation_cells: 3,
     new_only: state.newOnly,
     min_distance_km: state.spreadKm,
-    max_per_region: state.perCountry,
+    max_per_country: state.perCountry,
     tolerance: state.tolerance,
     ...extra,
   };
@@ -419,7 +419,8 @@ function paintLayer() {
       ${legendTitle(f.label)}
       <div class="ramp" style="background:${cssGradient(look.ramp)}"></div>
       <div class="scale abs num"><span style="left:0">${esc(fmtValue(lo, f.unit))}</span>${mid}<span style="left:100%">${esc(fmtValue(hi, f.unit))}</span></div>
-      <div class="note">Raw Earth data behind the score. Source:
+      <div class="note">Raw Earth data behind the score; colours stop at the range covering 99% of land.
+        Source:
         <a href="${esc(f.url)}" target="_blank" rel="noopener">${esc(f.dataset)}</a></div>`;
   }
   globe.setOverlay(image);
@@ -566,7 +567,7 @@ function renderTargetDetail() {
     if ("earth_percentile" in m) {
       const measured = m.measured_value === null || m.measured_value === undefined
         ? "qualitative" : `measured ${esc(fmtValue(m.measured_value, c.unit))} at ${esc(m.baseline || "a finer scale")}`;
-      note = `<span class="note">Earth's ${m.earth_percentile}th percentile (${measured})</span>`;
+      note = `<span class="note"><span class="tag" title="A judgement-call terrain class, not a measurement at this scale">estimated</span> Earth's ${m.earth_percentile}th percentile (${measured})</span>`;
     } else if (Math.abs(m.effective_value - m.value) > 1e-9) {
       note = `<span class="note">real value ${esc(fmtValue(m.value, c.unit))} lies outside the range of 99% of Earth's land; matched to that range's edge</span>`;
     }
@@ -793,9 +794,10 @@ function renderResults() {
   const bits = [];
   if (d.filters?.new_only) bits.push("new sites only");
   if (d.filters?.min_distance_km) bits.push(`≥ ${fmtInt(d.filters.min_distance_km)} km apart`);
-  if (d.filters?.max_per_region) bits.push(`≤ ${d.filters.max_per_region} per country`);
+  if (d.filters?.max_per_country) bits.push(`≤ ${d.filters.max_per_country} per country`);
   if (d.filters?.tolerance) bits.push(`error band ×${d.filters.tolerance}`);
-  $("resultsSummary").innerHTML = `Top ${d.results.length} of ${fmtInt(state.sorted.length)} land cells${bits.length ? ` · ${bits.join(" · ")}` : ""}.`;
+  $("resultsSummary").innerHTML = `Top ${d.results.length} of ${fmtInt(state.sorted.length)} land cells${bits.length ? ` · ${bits.join(" · ")}` : ""}.`
+    + (d.shortfall ? `<br><span class="shortfall">${esc(d.shortfall)} Loosen a setting above to see more.</span>` : "");
   $("siteList").innerHTML = d.results.map((r) => `
     <li><button class="site ${state.selected?.index === r.index ? "active" : ""}" data-index="${r.index}" type="button">
       <span class="rank num">${r.rank}</span>
@@ -965,7 +967,9 @@ function renderValidation() {
   $("validation").innerHTML = `
     <div class="auc-hero"><div class="big num">${v.auc.toFixed(2)}</div>
       <p><b>ROC-AUC.</b> In ${share} pairing, a known ${esc(body)} analog site outscores a vegetated or humid
-      reference point (${v.positives} analogs × ${v.negatives} references). 1.00 is perfect separation; 0.50 is chance.</p></div>
+      reference point (${v.positives} analogs × ${v.negatives} references = ${v.positives * v.negatives} pairs). 1.00 is perfect
+      separation; 0.50 is chance. A small, easy test: it shows the score separates analog-like land from green land,
+      not that every top site is a proven analog.</p></div>
     <h4 class="section-title">Control sites under the current weights</h4>
     <table class="controls"><thead><tr><th>Role</th><th>Site</th><th class="n">Score</th><th colspan="2">Percentile of land</th></tr></thead>
       <tbody>${rows}</tbody></table>
@@ -1050,7 +1054,7 @@ function viewsStrip(r) {
   return `<div class="views">
     <figure><img src="${esc(latest)}" alt="NASA VIIRS image from ${day}" loading="lazy"
       onerror="this.closest('figure').classList.add('missing')">
-      <figcaption>Latest NASA view · VIIRS NOAA-20 · ${day}<br><small>daily, 375 m, may show clouds · needs internet</small></figcaption></figure>
+      <figcaption>Latest NASA view · VIIRS NOAA-20 · ${day}<br><small>daily, 250 m, may show clouds · needs internet</small></figcaption></figure>
     <figure><img src="${esc(relief)}" alt="Relief-shaded Sentinel-2 image" loading="lazy"
       onerror="this.closest('figure').classList.add('missing')">
       <figcaption>Terrain relief · Sentinel-2 2020<br><small>hillshade from elevation · hover the site for 3D</small></figcaption></figure>
@@ -1548,6 +1552,10 @@ function readHash() {
 function writeHash() {
   const parts = [state.mode === "custom" ? "target=custom" : `target=${state.targetId}`];
   if (state.topK !== 20) parts.push(`top=${state.topK}`);
+  if (!state.newOnly) parts.push("new=0");
+  if (state.spreadKm !== 800) parts.push(`spread=${state.spreadKm}`);
+  if (state.perCountry !== 2) parts.push(`per=${state.perCountry}`);
+  if (state.tolerance) parts.push(`tol=${state.tolerance}`);
   if (state.view !== "globe") parts.push(`view=${state.view}`);
   if (state.layer !== "score") parts.push(`layer=${state.layer}`);
   if (state.selected?.rank) parts.push(`site=${state.selected.rank}`);
@@ -1616,6 +1624,16 @@ async function init() {
     state.targetId = state.targets.some((t) => t.id === hash.target) ? hash.target : state.targets[0].id;
     state.weights = { ...target().default_weights };
     if (hash.top && Number(hash.top) >= 5) state.topK = Math.min(100, Number(hash.top));
+    if (hash.new === "0") state.newOnly = false;
+    if (hash.spread !== undefined && Number.isFinite(Number(hash.spread))) state.spreadKm = Math.min(2000, Math.max(0, Number(hash.spread)));
+    if (hash.per !== undefined && Number.isFinite(Number(hash.per))) state.perCountry = Math.min(5, Math.max(0, Number(hash.per)));
+    if (hash.tol !== undefined && Number.isFinite(Number(hash.tol))) state.tolerance = Math.min(3, Math.max(0, Number(hash.tol)));
+    $("newOnly").checked = state.newOnly;
+    $("spreadKm").value = state.spreadKm;
+    $("spreadValue").textContent = state.spreadKm ? `${fmtInt(state.spreadKm)} km` : "no minimum";
+    $("perCountry").value = String(state.perCountry);
+    $("tolerance").value = state.tolerance;
+    $("toleranceValue").textContent = state.tolerance ? `×${state.tolerance.toFixed(2)}` : "exact";
     $("topK").value = state.topK;
     $("topKValue").textContent = state.topK;
 

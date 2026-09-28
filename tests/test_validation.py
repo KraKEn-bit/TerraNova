@@ -111,3 +111,14 @@ def test_power_boxes_follow_land():
     land[validation.cell_of(15.0, 15.0, land.shape)] = True
     assert (10, 10) in power.boxes_with_land(land)
     assert len(power.boxes_with_land(land)) <= 4
+
+
+def test_distance_grid_matches_point_novelty():
+    catalog = validation.load_catalog()
+    grid = validation.distance_grid(catalog)
+    for lat, lon in [(-19.75, -69.75), (40.75, 91.75), (-77.25, 162.25), (0.25, 20.25)]:
+        row, col = validation.cell_of(lat, lon, grid.shape)
+        clat, clon = 90 - (row + 0.5) * 0.5, -180 + (col + 0.5) * 0.5
+        assert grid[row, col] == pytest.approx(
+            validation.novelty(clat, clon, catalog)["distance_km"], abs=0.1
+        )

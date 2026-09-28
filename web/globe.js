@@ -107,7 +107,7 @@ export class Globe {
     Object.assign(this.controls, {
       enableDamping: true, dampingFactor: 0.08, enablePan: false,
       minDistance: 1.12, maxDistance: 7, rotateSpeed: 0.45, zoomSpeed: 0.8,
-      autoRotate: !REDUCED, autoRotateSpeed: 0.35,
+      autoRotate: false,
     });
     this.controls.addEventListener("start", () => { this.controls.autoRotate = false; this.flight = null; });
 
