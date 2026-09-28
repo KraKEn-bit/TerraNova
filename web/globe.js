@@ -420,18 +420,9 @@ export class Twin {
       enableDamping: true, dampingFactor: 0.08, enablePan: false,
       minDistance: 1.6, maxDistance: 7, rotateSpeed: 0.7, zoomSpeed: 0.8,
     });
-    // Spin slowly on its own; pause while the user drags, resume after a few idle seconds.
-    this.controls.autoRotate = !REDUCED;
-    this.controls.autoRotateSpeed = 2.0;   // one turn every ~30 s
-    this.controls.addEventListener("start", () => {
-      this.flight = null;
-      this.controls.autoRotate = false;
-      clearTimeout(this.idle);
-    });
-    this.controls.addEventListener("end", () => {
-      clearTimeout(this.idle);
-      if (!REDUCED) this.idle = setTimeout(() => { this.controls.autoRotate = true; }, 6000);
-    });
+    // Moves only when the user drags it: no automatic spin.
+    this.controls.autoRotate = false;
+    this.controls.addEventListener("start", () => { this.flight = null; });
     canvas.addEventListener("dblclick", () => this.reset());
     canvas.addEventListener("keydown", (e) => {
       const step = 0.25;
@@ -452,9 +443,6 @@ export class Twin {
 
   /* Fly back to the view of the target site. */
   reset() {
-    this.controls.autoRotate = false;
-    clearTimeout(this.idle);
-    if (!REDUCED) this.idle = setTimeout(() => { this.controls.autoRotate = true; }, 8000);
     const from = this.camera.position.clone();
     if (REDUCED) { this.camera.position.copy(this.home); return; }
     this.flight = { from, start: performance.now(), duration: 700 };

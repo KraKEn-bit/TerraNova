@@ -5,7 +5,7 @@ import { Globe, Twin } from "./globe.js";
 import { GodsEye, SUN_PRESETS } from "./godseye.js";
 import { Peek3D } from "./peek3d.js";
 import { FlatMap } from "./flatmap.js";
-import { cssGradient, paint, percentileOf, quantile, sortedFinite } from "./colors.js";
+import { LAYER_RAMPS, cssGradient, paint, percentileOf, quantile, rampPosition, sortedFinite } from "./colors.js";
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -398,7 +398,7 @@ function paintLayer() {
     // The ramp runs linearly from the 50th to the 100th percentile of land cells,
     // so "top 10%" sits at 80% of its width and "top 1%" at 98%.
     $("legend").innerHTML = `
-      <div class="title">Analog score · ${esc(target()?.short_name || "custom profile")}</div>
+      ${legendTitle(`Analog score · ${target()?.short_name || "custom profile"}`)}
       <div class="ramp" style="background:${cssGradient("score")}"></div>
       <div class="scale abs num"><span style="left:0">top 50%</span><span style="left:80%">top 10%</span><span style="left:98%">1%</span></div>
       ${histogram()}
@@ -408,16 +408,84 @@ function paintLayer() {
   } else {
     const f = state.layerField;
     if (!f) return;
-    image = paint(f.values, 720, 360, "predictor", { lo: f.lo, hi: f.hi });
+    const look = LAYER_RAMPS[state.layer] || { ramp: "precipitation" };
+    image = paint(f.values, 720, 360, "predictor", { lo: f.lo, hi: f.hi, ramp: look.ramp, center: look.center });
+    // With a centred (diverging) ramp, the ends are symmetric about the centre value.
+    const half = look.center === undefined ? null : Math.max(Math.abs(f.lo - look.center), Math.abs(f.hi - look.center));
+    const lo = half === null ? f.lo : look.center - half;
+    const hi = half === null ? f.hi : look.center + half;
+    const mid = look.center === undefined ? "" : `<span style="left:${(rampPosition(look.center, lo, hi, look.center) * 100).toFixed(0)}%">${esc(fmtValue(look.center, f.unit))}</span>`;
     $("legend").innerHTML = `
-      <div class="title">${esc(f.label)}</div>
-      <div class="ramp" style="background:${cssGradient("predictor")}"></div>
-      <div class="scale num"><span>${esc(fmtValue(f.lo, f.unit))}</span><span>${esc(fmtValue(f.hi, f.unit))}</span></div>
+      ${legendTitle(f.label)}
+      <div class="ramp" style="background:${cssGradient(look.ramp)}"></div>
+      <div class="scale abs num"><span style="left:0">${esc(fmtValue(lo, f.unit))}</span>${mid}<span style="left:100%">${esc(fmtValue(hi, f.unit))}</span></div>
       <div class="note">Raw Earth data behind the score. Source:
         <a href="${esc(f.url)}" target="_blank" rel="noopener">${esc(f.dataset)}</a></div>`;
   }
   globe.setOverlay(image);
   flat.setOverlay(image);
+  $("legend").classList.toggle("collapsed", ui.legend === false);
+  $("legend").querySelector(".box-toggle").addEventListener("click", () => setUi("legend", ui.legend === false));
+}
+
+/* ----------------------------------------------------- collapsible chrome */
+
+// Which parts of the interface are open; remembered per browser (best effort).
+const ui = (() => { try { return JSON.parse(localStorage.getItem("eaf-ui") || "{}"); } catch { return {}; } })();
+
+function legendTitle(text) {
+  const open = ui.legend !== false;
+  return `<div class="title legend-head"><span>${esc(text)}</span>
+    <button class="box-toggle" type="button" aria-expanded="${open}" aria-label="${open ? "Hide" : "Show"} the legend">${open ? "▾" : "▸"}</button></div>`;
+}
+
+function setUi(key, value) {
+  ui[key] = value;
+  try { localStorage.setItem("eaf-ui", JSON.stringify(ui)); } catch { /* storage unavailable */ }
+  applyUi();
+}
+
+function applyUi() {
+  const left = ui.left !== false;
+  const right = ui.right !== false;
+  document.body.classList.toggle("hide-left", !left);
+  document.body.classList.toggle("hide-right", !right);
+  const tl = $("toggleLeft");
+  tl.textContent = left ? "‹" : "›";
+  tl.setAttribute("aria-expanded", String(left));
+  tl.setAttribute("aria-label", `${left ? "Hide" : "Show"} the target panel`);
+  const tr = $("toggleRight");
+  tr.textContent = right ? "›" : "‹";
+  tr.setAttribute("aria-expanded", String(right));
+  tr.setAttribute("aria-label", `${right ? "Hide" : "Show"} the results panel`);
+  const twinOpen = ui.twin !== false;
+  $("twin").classList.toggle("collapsed", !twinOpen);
+  $("twinToggle").textContent = twinOpen ? "▾" : "▸";
+  $("twinToggle").setAttribute("aria-expanded", String(twinOpen));
+  const legend = $("legend");
+  legend.classList.toggle("collapsed", ui.legend === false);
+  const lt = legend.querySelector(".box-toggle");
+  if (lt) {
+    lt.textContent = ui.legend === false ? "▸" : "▾";
+    lt.setAttribute("aria-expanded", String(ui.legend !== false));
+  }
+  document.querySelectorAll("[data-fold]").forEach((b) => {
+    const open = ui[`fold_${b.dataset.fold}`] !== false;
+    b.setAttribute("aria-expanded", String(open));
+    b.querySelector(".chev").textContent = open ? "▾" : "▸";
+    b.closest(".block").classList.toggle("collapsed", !open);
+  });
+}
+
+function wireUi() {
+  $("toggleLeft").addEventListener("click", () => setUi("left", ui.left === false));
+  $("toggleRight").addEventListener("click", () => setUi("right", ui.right === false));
+  $("twinToggle").addEventListener("click", () => setUi("twin", ui.twin === false));
+  document.querySelectorAll("[data-fold]").forEach((b) => b.addEventListener("click", () => {
+    const key = `fold_${b.dataset.fold}`;
+    setUi(key, ui[key] === false);
+  }));
+  applyUi();
 }
 
 /* Score distribution of land cells, 24 bins; top-10% bins in the accent colour. */
@@ -518,7 +586,7 @@ function renderTargetDetail() {
     <table class="profile"><caption>What Earth is matched against</caption>${rows}</table>`;
   const caption = $("twinCaption");
   caption.innerHTML = `<strong>${esc(t.short_name)}</strong>${esc(t.body)} target · ${fmtCoord(t.latitude, t.longitude)}
-    <span class="twin-hint">spinning · drag to rotate · double-click to reset</span>`;
+    <span class="twin-hint">drag to rotate · double-click to reset</span>`;
   $("twin").hidden = !twin;
   if (twin) twin.show(t.body, t.latitude, t.longitude).catch(() => {});
 }
@@ -1492,6 +1560,7 @@ function writeHash() {
 async function init() {
   wireDialogs();
   wireSearch();
+  wireUi();
   $("surprise").addEventListener("click", surprise);
   wireTour();
   wireKeys();

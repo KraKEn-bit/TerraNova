@@ -39,16 +39,16 @@
 </header>
 
 <main class="layout">
-  <aside class="panel panel-left" aria-label="Target and weights">
+  <aside class="panel panel-left" id="leftPanel" aria-label="Target and weights">
     <section class="block">
-      <h2 class="eyebrow">1 · Choose a target</h2>
+      <h2 class="eyebrow"><button class="fold" type="button" data-fold="targets" aria-expanded="true"><span class="chev" aria-hidden="true">▾</span> 1 · Choose a target</button></h2>
       <div id="targets" role="radiogroup" aria-label="Target site"></div>
       <div class="target-detail" id="targetDetail"></div>
     </section>
 
     <section class="block">
       <div class="block-head">
-        <h2 class="eyebrow">2 · Weight the criteria</h2>
+        <h2 class="eyebrow"><button class="fold" type="button" data-fold="weights" aria-expanded="true"><span class="chev" aria-hidden="true">▾</span> 2 · Weight the criteria</button></h2>
         <button class="link-button" id="resetWeights" type="button">Reset</button>
       </div>
       <p class="hint">Drag to change how much each criterion counts. The globe and ranking update live.</p>
@@ -95,7 +95,11 @@
 
     <div class="legend" id="legend" aria-live="polite"></div>
 
+    <button class="edge-toggle left" id="toggleLeft" type="button" aria-controls="leftPanel" aria-expanded="true" aria-label="Hide the target panel">‹</button>
+    <button class="edge-toggle right" id="toggleRight" type="button" aria-controls="rightPanel" aria-expanded="true" aria-label="Hide the results panel">›</button>
+
     <figure class="twin" id="twin">
+      <button class="box-toggle" id="twinToggle" type="button" aria-expanded="true" aria-label="Hide the target globe">▾</button>
       <canvas id="twinCanvas" width="360" height="360" tabindex="0" role="img"
         aria-label="Target body globe. Drag or use arrow keys to rotate, scroll to zoom, double-click or Home to return to the site."></canvas>
       <figcaption id="twinCaption"></figcaption>
@@ -119,7 +123,7 @@
     </div>
   </section>
 
-  <aside class="panel panel-right" aria-label="Results">
+  <aside class="panel panel-right" id="rightPanel" aria-label="Results">
     <div class="tabs" role="tablist">
       <button role="tab" id="tabResults" aria-selected="true" aria-controls="results" type="button">Ranked sites</button>
       <button role="tab" id="tabExplore" aria-selected="false" aria-controls="explore" type="button">Explore</button>

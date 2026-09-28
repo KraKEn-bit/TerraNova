@@ -1,28 +1,65 @@
 /* Colour ramps for the data overlays.
  *
- * Both are single-hue sequential ramps (dark -> light on the dark globe), per
- * the data-viz rule "sequential = one hue". Low values fade to transparent so
- * the NASA imagery underneath stays readable.
- *   score      orange, coloured by rank percentile of land cells
- *   predictor  teal, coloured by value across Earth's envelope
+ * Each ramp is a list of stops: [t, r, g, b, alpha], t in 0..1.
+ *   score        single-hue orange, coloured by rank percentile of land cells;
+ *                low scores fade to transparent so the NASA imagery shows through
+ *   precipitation  teal, dry (dark) to wet (light)
+ *   vegetation   bare tan to deep green: brown and green are the familiar
+ *                "bare ground vs plants" pair
+ *   blueRed      diverging blue (low) - neutral grey - red (high), used for the
+ *                temperature layers; mean temperature is centred on 0 C
+ *   phthalo      terrain (slope, roughness, elevation): pale mint to dark
+ *                phthalo green (#123524), so rugged, high ground reads dark
  */
 
-const SCORE_STOPS = [
-  // t, r, g, b, alpha
-  [0.0, 74, 26, 8, 0.0],
-  [0.25, 128, 44, 14, 0.38],
-  [0.5, 196, 73, 26, 0.58],
-  [0.75, 240, 138, 75, 0.78],
-  [0.92, 255, 196, 150, 0.9],
-  [1.0, 255, 235, 214, 0.96],
-];
+export const RAMPS = {
+  score: [
+    [0.0, 74, 26, 8, 0.0],
+    [0.25, 128, 44, 14, 0.38],
+    [0.5, 196, 73, 26, 0.58],
+    [0.75, 240, 138, 75, 0.78],
+    [0.92, 255, 196, 150, 0.9],
+    [1.0, 255, 235, 214, 0.96],
+  ],
+  precipitation: [
+    [0.0, 8, 44, 48, 0.55],
+    [0.35, 18, 104, 98, 0.72],
+    [0.7, 38, 176, 150, 0.84],
+    [1.0, 206, 246, 228, 0.92],
+  ],
+  vegetation: [
+    [0.0, 201, 168, 107, 0.82],
+    [0.25, 190, 186, 104, 0.84],
+    [0.5, 128, 170, 72, 0.88],
+    [0.75, 54, 132, 48, 0.9],
+    [1.0, 12, 84, 28, 0.94],
+  ],
+  blueRed: [
+    [0.0, 33, 84, 170, 0.88],
+    [0.25, 104, 154, 214, 0.84],
+    [0.5, 214, 211, 204, 0.72],
+    [0.75, 226, 118, 92, 0.86],
+    [1.0, 170, 26, 32, 0.92],
+  ],
+  phthalo: [
+    [0.0, 226, 240, 232, 0.55],
+    [0.3, 132, 190, 162, 0.72],
+    [0.6, 44, 116, 86, 0.86],
+    [1.0, 18, 53, 36, 0.95],
+  ],
+};
 
-const PREDICTOR_STOPS = [
-  [0.0, 8, 44, 48, 0.55],
-  [0.35, 18, 104, 98, 0.72],
-  [0.7, 38, 176, 150, 0.84],
-  [1.0, 206, 246, 228, 0.92],
-];
+/* Which ramp each layer uses, and whether it is centred on a value (diverging). */
+export const LAYER_RAMPS = {
+  precipitation: { ramp: "precipitation" },
+  vegetation: { ramp: "vegetation" },
+  annual_temperature_range: { ramp: "blueRed" },
+  lst_diurnal_range: { ramp: "blueRed" },
+  mean_annual_temperature: { ramp: "blueRed", center: 0 },
+  slope: { ramp: "phthalo" },
+  roughness: { ramp: "phthalo" },
+  elevation: { ramp: "phthalo" },
+};
 
 function sample(stops, t) {
   const x = Math.min(1, Math.max(0, t));
@@ -37,8 +74,8 @@ function sample(stops, t) {
   return stops[stops.length - 1].slice(1);
 }
 
-export function cssGradient(kind) {
-  const stops = kind === "score" ? SCORE_STOPS : PREDICTOR_STOPS;
+export function cssGradient(name) {
+  const stops = RAMPS[name] || RAMPS.precipitation;
   const parts = stops.map(([t, r, g, b, a]) => `rgba(${r},${g},${b},${Math.max(a, 0.15)}) ${t * 100}%`);
   return `linear-gradient(90deg, ${parts.join(", ")})`;
 }
@@ -67,9 +104,17 @@ function rankOf(sorted, v) {
   return lo / sorted.length;
 }
 
+/* Position (0..1) of a value on a layer's ramp. With a centre, the ramp is
+ * symmetric about it, so the neutral midpoint means "the centre value". */
+export function rampPosition(v, lo, hi, center) {
+  if (center === undefined || center === null) return (v - lo) / (hi - lo || 1);
+  const half = Math.max(Math.abs(lo - center), Math.abs(hi - center)) || 1;
+  return 0.5 + (v - center) / (2 * half);
+}
+
 /* Paint a 720x360 grid into RGBA pixels.
  * mode "score": only the top (1 - floor) of land cells are coloured, by rank.
- * mode "predictor": linear between lo and hi. */
+ * mode "predictor": opts.ramp, linear between lo and hi (or centred on opts.center). */
 export function paint(values, width, height, mode, opts = {}) {
   const image = new ImageData(width, height);
   const px = image.data;
@@ -81,17 +126,17 @@ export function paint(values, width, height, mode, opts = {}) {
       if (!Number.isFinite(v)) continue;
       const p = rankOf(sorted, v);
       if (p < floor) continue;
-      const [r, g, b, a] = sample(SCORE_STOPS, (p - floor) / (1 - floor));
+      const [r, g, b, a] = sample(RAMPS.score, (p - floor) / (1 - floor));
       const o = i * 4;
       px[o] = r; px[o + 1] = g; px[o + 2] = b; px[o + 3] = Math.round(a * 255);
     }
   } else {
-    const { lo, hi } = opts;
-    const span = hi - lo || 1;
+    const { lo, hi, center } = opts;
+    const stops = RAMPS[opts.ramp] || RAMPS.precipitation;
     for (let i = 0; i < values.length; i++) {
       const v = values[i];
       if (!Number.isFinite(v)) continue;
-      const [r, g, b, a] = sample(PREDICTOR_STOPS, (v - lo) / span);
+      const [r, g, b, a] = sample(stops, rampPosition(v, lo, hi, center));
       const o = i * 4;
       px[o] = r; px[o + 1] = g; px[o + 2] = b; px[o + 3] = Math.round(a * 255);
     }
