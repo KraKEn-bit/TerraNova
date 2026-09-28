@@ -1,4 +1,4 @@
-"""Build ``cache/predictors.zarr`` from the raw rasters cached under ``cache/raw``.
+"""Build ``cache/predictors.zarr`` from the raw inputs cached under ``cache/raw``.
 
     python -m src.acquire.build_predictor_stack
 
@@ -11,20 +11,26 @@ the candidate-land mask and no post-hoc filtering is needed.
 
 Stages (each caches its 0.5 degree arrays under ``cache/derived``):
 
+``land``
+    Natural Earth 1:50m land minus lakes, rasterised at 1/12 degree and
+    block-averaged to a land fraction. Covers Antarctica; excludes the Caspian.
 ``dem``
     256 AWS Terrarium tiles at zoom 4 are decoded, warped to a 1/12 degree
-    lat/lon grid (2160 x 4320, ~9.3 km at the equator) and masked to land.
-    Elevation is the 6 x 6 block mean onto the 0.5 degree grid; slope is the
-    horizontal gradient of that 0.5 degree field; roughness is the RMS height
-    residual about a least-squares plane fitted over a 3 x 3 neighbourhood of
-    the 1/12 degree grid, block-averaged onto the 0.5 degree grid.
-``aridity``
-    Global Aridity Index v3.1 (30 arc-sec, stored as integer x 10000).
-``climate``
-    WorldClim 2.1 monthly mean temperature, 10 arc-min: warmest month minus
-    coldest month.
+    lat/lon grid and masked to land. Elevation is the 6 x 6 block mean; slope is
+    the horizontal gradient of the 0.5 degree field; roughness is the RMS height
+    residual about a least-squares plane over a 3 x 3 neighbourhood of the
+    1/12 degree grid, block-averaged.
+``power``
+    NASA POWER (MERRA-2, 2001-2020) climatology: annual precipitation
+    (PRECTOTCORR x 365.25), annual temperature range (warmest minus coldest
+    monthly mean T2M), mean annual temperature (mean of the 12 monthly T2M),
+    plus TS_RANGE for the LST gap fill.
 ``lst``
-    Zenodo 1 km MODIS Terra LST, long-term daytime minus nighttime composite.
+    MODIS Terra LST long-term day minus night (Zenodo 6458406). Cells MODIS does
+    not cover (Antarctica, some high Arctic) are filled from POWER TS_RANGE by a
+    least-squares fit over the cells both cover; ``lst_source`` records which.
+``vegetation``
+    Annual maximum MODIS Terra monthly NDVI (2023) from NASA GIBS, clipped at 0.
 """
 
 from __future__ import annotations
@@ -41,9 +47,9 @@ import zarr
 from PIL import Image
 from rasterio.transform import from_origin
 from rasterio.warp import Resampling, reproject
-from rasterio.windows import Window
 from scipy.ndimage import distance_transform_edt
 
+from src.acquire import gibs_ndvi, landmask, power
 from src.acquire.download import fetch, utc_now_iso
 from src.compute.similarity import CRITERIA
 
@@ -84,15 +90,7 @@ MERC_TRANSFORM = from_origin(-MERC_HALF, MERC_HALF, MERC_RES, MERC_RES)
 # then reused from cache/raw, so a second run - or OFFLINE=1 - never touches
 # the network.
 TERRARIUM_URL = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium"
-AI_URL = "https://ndownloader.figshare.com/files/56300327"
-AI_ZIP = RAW_DIR / "Global-AI_ET0__annual_v3_1.zip"
-AI_INNER = "Global-AI_ET0__annual_v3_1/ai_v31_yr.tif"
-AI_SCALE = 1e-4  # the source stores AI as integer x 10000
-AI_OCEAN = 0
-AI_FILL = 65535
-
-WC_URL = "https://geodata.ucdavis.edu/climate/worldclim/2_1/base/wc2.1_10m_tavg.zip"
-WC_ZIP = RAW_DIR / "wc2.1_10m_tavg.zip"
+DAYS_PER_YEAR = 365.25
 
 LST_RECORD = "https://zenodo.org/api/records/6458406/files"
 LST_DAY = RAW_DIR / "zenodo_lst_day.tif"
@@ -126,11 +124,6 @@ def _store(name: str, array: np.ndarray) -> np.ndarray:
     DERIVED_DIR.mkdir(parents=True, exist_ok=True)
     np.save(_cache(name), array)
     return array
-
-
-def _vsizip(archive: Path, inner: str) -> str:
-    base = "/vsizip/" + str(archive.resolve()).replace("\\", "/")
-    return f"{base}/{inner}"
 
 
 def _raw(name: str, url: str, offline: bool | None = None) -> Path:
@@ -204,26 +197,6 @@ def _load_mercator_dem(offline: bool | None = None) -> np.ndarray:
     return grid
 
 
-def _land_fine_from_aridity() -> np.ndarray:
-    """Nearest-neighbour land mask on the 1/12 degree grid, from the AI file.
-
-    No ``dst_nodata`` is passed: 0 is a legitimate AI value as well as the
-    source's open-ocean encoding, and handing it to GDAL as a destination
-    nodata makes the warper emit 1 everywhere instead of 0. The fill value is
-    filtered here instead, exactly as :func:`stage_aridity` does.
-    """
-    with rasterio.open(_vsizip(AI_ZIP, AI_INNER)) as src:
-        values = np.zeros((SROW, SCOL), dtype=src.dtypes[0])
-        reproject(
-            rasterio.band(src, 1),
-            values,
-            dst_transform=SUB_TRANSFORM,
-            dst_crs=CRS,
-            resampling=Resampling.nearest,
-        )
-    return (values != AI_OCEAN) & (values != AI_FILL)
-
-
 def stage_terrain(force: bool = False, offline: bool | None = None) -> dict[str, np.ndarray]:
     cached = {key: _load(key, force) for key in ("elevation", "slope", "roughness")}
     if all(value is not None for value in cached.values()):
@@ -246,7 +219,7 @@ def stage_terrain(force: bool = False, offline: bool | None = None) -> dict[str,
     )
     del mercator
 
-    land = _land_fine_from_aridity()
+    land = landmask.fine_land(SROW, SCOL, offline=offline)
     dem[~land] = np.nan
     del land
     _log(f"terrain: fine DEM valid over {np.isfinite(dem).mean() * 100:.1f}% of the 1/12 deg grid")
@@ -334,82 +307,63 @@ def _fine_roughness(dem: np.ndarray, band: int = 360) -> np.ndarray:
 
 
 # --------------------------------------------------------------------------
-# stage: aridity
+# stage: land
 # --------------------------------------------------------------------------
 
 
-def stage_aridity(force: bool = False, offline: bool | None = None) -> dict[str, np.ndarray]:
-    cached = {"aridity": _load("aridity", force), "land_fraction": _load("land_fraction", force)}
-    if cached["aridity"] is not None and cached["land_fraction"] is not None:
-        return cached  # type: ignore[return-value]
-
-    started = time.time()
-    aridity = np.full((NROW, NCOL), np.nan, dtype=np.float32)
-    land = np.zeros((NROW, NCOL), dtype=np.float32)
-
-    archive = _raw(AI_ZIP.name, AI_URL, offline)
-    with rasterio.open(_vsizip(archive, AI_INNER)) as src:
-        if src.nodata not in (None, AI_FILL):
-            raise BuildError(f"unexpected AI nodata {src.nodata}")
-        height, width = src.height, src.width
-        row_step = round(CELL / abs(src.res[1]))
-        col_step = round(CELL / abs(src.res[0]))
-        if abs(src.bounds.top - 90.0) > 1e-6:
-            raise BuildError(f"AI grid top is {src.bounds.top}, expected 90")
-        if width != col_step * NCOL:
-            raise BuildError(f"AI grid width {width} is not {col_step} x {NCOL}")
-        block_rows = row_step * 10
-        for row0 in range(0, height, block_rows):
-            rows = min(block_rows, height - row0)
-            window = Window(0, row0, width, rows)
-            values = src.read(1, window=window)
-            valid = (values != AI_OCEAN) & (values != AI_FILL)
-            shape = (rows // row_step, row_step, NCOL, col_step)
-            count = valid.reshape(shape).sum(axis=(1, 3))
-            total = np.where(valid, values, 0).astype(np.float64).reshape(shape).sum(axis=(1, 3))
-            first = row0 // row_step
-            last = first + count.shape[0]
-            ok = count > 0
-            aridity[first:last] = np.where(
-                ok, total / np.maximum(count, 1) * AI_SCALE, np.nan
-            ).astype(np.float32)
-            land[first:last] = (count / float(row_step * col_step)).astype(np.float32)
-        _log(f"aridity: {time.time() - started:.1f}s over {height} x {width} pixels")
-
-    return {
-        "aridity": _store("aridity", aridity),
-        "land_fraction": _store("land_fraction", land),
-    }
-
-
-# --------------------------------------------------------------------------
-# stage: climate
-# --------------------------------------------------------------------------
-
-
-def stage_climate(force: bool = False, offline: bool | None = None) -> np.ndarray:
-    cached = _load("annual_temperature_range", force)
+def stage_land(force: bool = False, offline: bool | None = None) -> np.ndarray:
+    cached = _load("land_fraction", force)
     if cached is not None:
         return cached
+    fine = landmask.fine_land(SROW, SCOL, offline=offline)
+    fraction = landmask.land_fraction(fine, BLOCK)
+    kept = int((fraction >= LAND_FRACTION_MIN).sum())
+    _log(f"land: {kept} cells with land fraction >= {LAND_FRACTION_MIN}")
+    return _store("land_fraction", fraction)
 
+
+# --------------------------------------------------------------------------
+# stage: NASA POWER climatology
+# --------------------------------------------------------------------------
+
+
+def stage_power(force: bool = False, offline: bool | None = None) -> dict[str, np.ndarray]:
+    names = (
+        "precipitation",
+        "annual_temperature_range",
+        "mean_annual_temperature",
+        "power_ts_range",
+    )
+    cached = {name: _load(name, force) for name in names}
+    if all(value is not None for value in cached.values()):
+        return cached  # type: ignore[return-value]
+
+    corners = power.boxes_with_land(stage_land(offline=offline) > 0)
     started = time.time()
-    archive = _raw(WC_ZIP.name, WC_URL, offline)
-    warm: np.ndarray | None = None
-    cold: np.ndarray | None = None
-    for month in range(1, 13):
-        inner = f"wc2.1_10m_tavg_{month:02d}.tif"
-        with rasterio.open(_vsizip(archive, inner)) as src:
-            values = src.read(1, masked=True).astype(np.float32)
-            values = np.ma.filled(values.astype(np.float32), np.nan)
-        warm = values.copy() if warm is None else np.fmax(warm, values)
-        cold = values.copy() if cold is None else np.fmin(cold, values)
-    assert warm is not None and cold is not None
-    span = warm - cold
-    span[~np.isfinite(warm) | ~np.isfinite(cold)] = np.nan
+    rain = power.fetch_parameter("PRECTOTCORR", corners, ("ANN",), offline=offline)["ANN"]
+    temps = power.fetch_parameter("T2M", corners, power.MONTHS, offline=offline)
+    skin = power.fetch_parameter("TS_RANGE", corners, ("ANN",), offline=offline)["ANN"]
 
-    annual_range = _block_mean(span, 3)
-    _log(f"climate: {time.time() - started:.1f}s for 12 monthly means")
-    return _store("annual_temperature_range", annual_range)
+    monthly = np.stack([power.to_cell_grid(temps[m], LAT_CELL, LON_CELL) for m in power.MONTHS])
+    complete = np.isfinite(monthly).all(axis=0)
+    filled = np.where(np.isfinite(monthly), monthly, 0.0)
+    annual_range = np.where(complete, filled.max(axis=0) - filled.min(axis=0), np.nan)
+    mean_temperature = np.where(complete, filled.mean(axis=0), np.nan)
+    precipitation = np.clip(power.to_cell_grid(rain, LAT_CELL, LON_CELL), 0.0, None)
+    ts_range = power.to_cell_grid(skin, LAT_CELL, LON_CELL)
+    _log(f"power: {len(corners)} boxes x 3 parameters in {time.time() - started:.1f}s")
+    return {
+        "precipitation": _store(
+            "precipitation", (precipitation * DAYS_PER_YEAR).astype(np.float32)
+        ),
+        "annual_temperature_range": _store(
+            "annual_temperature_range", annual_range.astype(np.float32)
+        ),
+        "mean_annual_temperature": _store(
+            "mean_annual_temperature", mean_temperature.astype(np.float32)
+        ),
+        "power_ts_range": _store("power_ts_range", ts_range.astype(np.float32)),
+    }
 
 
 # --------------------------------------------------------------------------
@@ -435,24 +389,101 @@ def _warp_lst(path: Path) -> np.ndarray:
     return out
 
 
-def stage_lst(force: bool = False, offline: bool | None = None) -> np.ndarray:
-    cached = _load("lst_diurnal_range", force)
+def _modis_lst(force: bool, offline: bool | None) -> np.ndarray:
+    cached = _load("lst_modis", force)
     if cached is not None:
         return cached
-
-    started = time.time()
     day = _warp_lst(_raw(LST_DAY.name, f"{LST_RECORD}/{LST_DAY.name}/content", offline))
     night = _warp_lst(_raw(LST_NIGHT.name, f"{LST_RECORD}/{LST_NIGHT.name}/content", offline))
     span = (day - night) * LST_SCALE
     span[~np.isfinite(day) | ~np.isfinite(night)] = np.nan
     span[span <= 0] = np.nan
-    _log(f"lst: {time.time() - started:.1f}s for day and night warps")
-    return _store("lst_diurnal_range", span.astype(np.float32))
+    return _store("lst_modis", span.astype(np.float32))
+
+
+def stage_lst(force: bool = False, offline: bool | None = None) -> dict[str, np.ndarray]:
+    cached = {name: _load(name, force) for name in ("lst_diurnal_range", "lst_source")}
+    if all(value is not None for value in cached.values()):
+        return cached  # type: ignore[return-value]
+
+    modis = _modis_lst(force, offline)
+    skin = stage_power(offline=offline)["power_ts_range"]
+    land = stage_land(offline=offline) >= LAND_FRACTION_MIN
+
+    both = land & np.isfinite(modis) & np.isfinite(skin)
+    x = skin[both].astype(np.float64)
+    y = modis[both].astype(np.float64)
+    slope, intercept = np.polyfit(x, y, 1)
+    corr = float(np.corrcoef(x, y)[0, 1])
+    filled = np.clip(np.where(np.isfinite(modis), modis, slope * skin + intercept), 0.0, None)
+    source = np.where(np.isfinite(modis), 1, np.where(np.isfinite(skin), 2, 0)).astype(np.uint8)
+    fit = {
+        "slope": round(float(slope), 4),
+        "intercept": round(float(intercept), 4),
+        "r": round(corr, 4),
+        "n": int(both.sum()),
+    }
+    (DERIVED_DIR / "lst_fit.json").write_text(json.dumps(fit), encoding="utf-8")
+    _log(
+        f"lst: MODIS = {fit['slope']} x TS_RANGE + {fit['intercept']} (r = {fit['r']}); "
+        f"gap-filled {int((land & (source == 2)).sum())} land cells"
+    )
+    return {
+        "lst_diurnal_range": _store("lst_diurnal_range", filled.astype(np.float32)),
+        "lst_source": _store("lst_source", source),
+    }
+
+
+# --------------------------------------------------------------------------
+# stage: vegetation
+# --------------------------------------------------------------------------
+
+
+def stage_vegetation(force: bool = False, offline: bool | None = None) -> np.ndarray:
+    cached = _load("vegetation", force)
+    if cached is not None:
+        return cached
+    fine = gibs_ndvi.annual_max(offline=offline)
+    return _store("vegetation", _block_mean(fine, BLOCK))
 
 
 # --------------------------------------------------------------------------
 # assemble
 # --------------------------------------------------------------------------
+
+
+SOURCES: list[dict[str, str]] = [
+    {
+        "dataset_id": landmask.DATASET_ID,
+        "title": "Natural Earth 1:50m land minus 1:50m lakes (public domain)",
+        "url": landmask.SOURCE_URL,
+        "used_for": "candidate land mask",
+    },
+    {
+        "dataset_id": "aws_terrain_tiles_terrarium",
+        "title": "AWS Terrain Tiles (Terrarium, zoom 4): SRTM, GMTED and ETOPO1 composite",
+        "url": "https://registry.opendata.aws/terrain-tiles/",
+        "used_for": "elevation, slope, roughness",
+    },
+    {
+        "dataset_id": power.DATASET_ID,
+        "title": "NASA POWER climatology, MERRA-2 2001-2020 (PRECTOTCORR, T2M, TS_RANGE)",
+        "url": power.SOURCE_URL,
+        "used_for": "precipitation, annual and mean temperature, LST gap fill",
+    },
+    {
+        "dataset_id": "zenodo_modis_lst_1km_2000_2020",
+        "title": "Long-term MODIS Terra LST day-time and night-time, 1 km, 2000-2020",
+        "url": "https://doi.org/10.5281/zenodo.6458406",
+        "used_for": "LST diurnal range",
+    },
+    {
+        "dataset_id": gibs_ndvi.DATASET_ID,
+        "title": "NASA GIBS MODIS_Terra_L3_NDVI_Monthly (MOD13C2), 2023 annual maximum",
+        "url": gibs_ndvi.SOURCE_URL,
+        "used_for": "vegetation",
+    },
+]
 
 
 def _report(stack: dict[str, np.ndarray], land: np.ndarray) -> None:
@@ -464,19 +495,24 @@ def _report(stack: dict[str, np.ndarray], land: np.ndarray) -> None:
         if values.size == 0:
             _log(f"  {key}: no finite values")
             continue
-        q = np.percentile(values, [0.5, 1, 5, 50, 95, 99, 99.5])
+        q = np.percentile(values, [0.5, 50, 99.5])
         _log(
-            f"  {key:26s} n={values.size:6d} min={values.min():9.3f} "
-            f"p0.5={q[0]:9.3f} p1={q[1]:9.3f} p5={q[2]:9.3f} p50={q[3]:9.3f} "
-            f"p95={q[4]:9.3f} p99={q[5]:9.3f} max={values.max():9.3f}"
+            f"  {key:26s} n={values.size:6d} min={values.min():9.3f} p0.5={q[0]:9.3f} "
+            f"p50={q[1]:9.3f} p99.5={q[2]:9.3f} max={values.max():9.3f}"
         )
+
+
+def _write(root: zarr.Group, name: str, values: np.ndarray, dtype: str, fill: float) -> None:
+    root.create_array(name, shape=values.shape, dtype=dtype, chunks=values.shape, fill_value=fill)
+    root[name][:] = values
 
 
 def assemble() -> None:
     norm = json.loads(NORM_PATH.read_text(encoding="utf-8"))
     land = _load("land_fraction", False)
-    if land is None:
-        raise BuildError("land_fraction must be built before assemble")
+    lst_source = _load("lst_source", False)
+    if land is None or lst_source is None:
+        raise BuildError("the land and lst stages must be built before assemble")
     keep = land >= LAND_FRACTION_MIN
 
     stack: dict[str, np.ndarray] = {}
@@ -495,26 +531,14 @@ def assemble() -> None:
 
     root = zarr.open_group(str(STACK_PATH), mode="w")
     for key in CRITERIA:
-        root.create_array(
-            key,
-            shape=(NROW, NCOL),
-            dtype="f4",
-            chunks=(NROW, NCOL),
-            fill_value=np.nan,
-        )
-        root[key][:] = stack[key]
-    for name, values in (
-        ("lat", LAT_CELL.astype(np.float32)),
-        ("lon", LON_CELL.astype(np.float32)),
-    ):
-        root.create_array(name, shape=values.shape, dtype="f4", chunks=values.shape)
-        root[name][:] = values
-    root.create_array(
-        "land_fraction", shape=(NROW, NCOL), dtype="f4", chunks=(NROW, NCOL), fill_value=0.0
-    )
-    root["land_fraction"][:] = land
+        _write(root, key, stack[key], "f4", np.nan)
+    _write(root, "lat", LAT_CELL.astype(np.float32), "f4", np.nan)
+    _write(root, "lon", LON_CELL.astype(np.float32), "f4", np.nan)
+    _write(root, "land_fraction", np.asarray(land, dtype=np.float32), "f4", 0.0)
+    _write(root, "lst_source", np.where(keep, lst_source, 0).astype(np.uint8), "u1", 0)
 
-    root.attrs["schema_version"] = "1.0"
+    fit_path = DERIVED_DIR / "lst_fit.json"
+    root.attrs["schema_version"] = "2.0"
     root.attrs["created_utc"] = utc_now_iso()
     root.attrs["normalization"] = norm["criteria"]
     root.attrs["weights"] = norm["weights"]
@@ -525,78 +549,40 @@ def assemble() -> None:
         "row0_centre_latitude": float(LAT_CELL[0]),
         "column0_centre_longitude": float(LON_CELL[0]),
         "ordering": "row-major, north to south then west to east",
-        "sub_grid": {
-            "shape": [SROW, SCOL],
-            "cell_degrees": SUB_CELL,
-            "purpose": "1/12 degree DEM analysis grid used for slope and roughness",
-        },
     }
     root.attrs["land_rule"] = (
-        f"A cell is a candidate when at least {LAND_FRACTION_MIN:.0%} of its area is land, "
-        "where land is the fraction of the 30 arc-second Aridity Index pixels that carry a "
-        "valid value (the source encodes open ocean as 0 and fill as 65535). Every predictor "
-        "is set to NaN below that threshold, so similarity.valid_mask is the land mask."
+        f"A cell is a candidate when at least {LAND_FRACTION_MIN:.0%} of its 1/12 degree "
+        "pixels fall inside Natural Earth 1:50m land and outside 1:50m lakes."
     )
-    root.attrs["sources"] = [
-        {
-            "dataset_id": "aws_terrain_tiles_terrarium",
-            "title": "Mapzen/AWS Terrain Tiles, Terrarium RGB encoding, zoom 4",
-            "url": "https://registry.opendata.aws/terrain-tiles/",
-            "local_files": "cache/raw/terrarium_4_*.png (256 tiles)",
-        },
-        {
-            "dataset_id": "global_ai_et0_v3_1",
-            "title": "Global Aridity Index and Potential Evapotranspiration (ET0) Database v3.1",
-            "url": "https://doi.org/10.6084/m9.figshare.7504448",
-            "local_files": AI_ZIP.name,
-            "note": "AI is stored as integer x 10000; the build multiplies by 1e-4.",
-        },
-        {
-            "dataset_id": "worldclim_2_1_tavg",
-            "title": "WorldClim 2.1 monthly average temperature, 10 arc-min, 1970-2000",
-            "url": "https://doi.org/10.1038/s41597-018-0002-1",
-            "local_files": WC_ZIP.name,
-        },
-        {
-            "dataset_id": "zenodo_modis_lst_1km_2000_2020",
-            "title": (
-                "Long-term MODIS LST day-time and night-time temperatures at 1 km, 2000-2020"
-            ),
-            "url": "https://doi.org/10.5281/zenodo.6458406",
-            "local_files": f"{LST_DAY.name}, {LST_NIGHT.name}",
-            "note": "int16 x 0.02 K; the predictor is (day - night) x 0.02.",
-        },
-    ]
+    root.attrs["lst_source_codes"] = {"1": "MODIS LST", "2": "NASA POWER TS_RANGE fit"}
+    if fit_path.exists():
+        root.attrs["lst_fit"] = json.loads(fit_path.read_text(encoding="utf-8"))
+    root.attrs["sources"] = SOURCES
     _log(f"wrote {STACK_PATH.relative_to(REPO_ROOT)}")
+
+
+STAGES = ("land", "dem", "power", "lst", "vegetation", "assemble")
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--stage",
-        choices=("all", "dem", "aridity", "climate", "lst", "assemble"),
-        default="all",
-    )
+    parser.add_argument("--stage", choices=("all", *STAGES), default="all")
     parser.add_argument("--force", action="store_true", help="ignore cache/derived")
     parser.add_argument("--offline", action="store_true", help="never touch the network")
     args = parser.parse_args(argv)
     offline: bool | None = True if args.offline else None
 
-    stages = (
-        ("dem", "aridity", "climate", "lst", "assemble") if args.stage == "all" else (args.stage,)
-    )
-    for stage in stages:
+    runners = {
+        "land": lambda: stage_land(args.force, offline),
+        "dem": lambda: stage_terrain(args.force, offline),
+        "power": lambda: stage_power(args.force, offline),
+        "lst": lambda: stage_lst(args.force, offline),
+        "vegetation": lambda: stage_vegetation(args.force, offline),
+        "assemble": assemble,
+    }
+    for stage in STAGES if args.stage == "all" else (args.stage,):
         started = time.time()
-        if stage == "dem":
-            stage_terrain(force=args.force, offline=offline)
-        elif stage == "aridity":
-            stage_aridity(force=args.force, offline=offline)
-        elif stage == "climate":
-            stage_climate(force=args.force, offline=offline)
-        elif stage == "lst":
-            stage_lst(force=args.force, offline=offline)
-        elif stage == "assemble":
-            assemble()
+        runners[stage]()
         _log(f"stage {stage} finished in {time.time() - started:.1f}s")
     return 0
 

@@ -1,0 +1,207 @@
+{
+  "schema_version": "1.0",
+  "purpose": "Known terrestrial analog sites. Used for (1) the novelty badge on ranked results and (2) validation: 'environment' sites are positive controls for the environmental scoring model; 'geology' sites were chosen for rocks or processes the model does not measure, so they are listed for novelty only. Negatives are densely vegetated or humid reference points that no planetary analog should resemble. A target with a 'validation_tag' (the Haworth cold trap uses 'cold_polar') counts the 'environment' sites carrying that tag as positives, whatever body they were first used for.",
+  "provenance": "Coordinates and the analog use of every site are taken from the linked English Wikipedia article (retrieved 2026-09-28). Negatives are editorial reference points, not citations.",
+  "sites": [
+    {
+      "name": "Haughton impact crater, Devon Island",
+      "lat": 75.3833,
+      "lon": -89.6667,
+      "bodies": [
+        "mars"
+      ],
+      "kind": "environment",
+      "use": "Haughton-Mars Project: polar-desert impact crater with ground ice, dubbed 'Mars on Earth'.",
+      "source_url": "https://en.wikipedia.org/wiki/Haughton_impact_crater",
+      "tags": [
+        "cold_polar"
+      ]
+    },
+    {
+      "name": "Axel Heiberg Island",
+      "lat": 79.75,
+      "lon": -91.0,
+      "bodies": [
+        "mars"
+      ],
+      "kind": "environment",
+      "use": "Mars analogue for polar cryo-environments and instrument field tests.",
+      "source_url": "https://en.wikipedia.org/wiki/Axel_Heiberg_Island",
+      "tags": [
+        "cold_polar"
+      ]
+    },
+    {
+      "name": "McMurdo Dry Valleys",
+      "lat": -77.4667,
+      "lon": 162.5167,
+      "bodies": [
+        "mars"
+      ],
+      "kind": "environment",
+      "use": "Ice-free polar desert used as a Mars analogue.",
+      "source_url": "https://en.wikipedia.org/wiki/McMurdo_Dry_Valleys",
+      "tags": [
+        "cold_polar"
+      ]
+    },
+    {
+      "name": "Atacama Desert",
+      "lat": -24.5,
+      "lon": -69.25,
+      "bodies": [
+        "mars"
+      ],
+      "kind": "environment",
+      "use": "Hyper-arid desert used as a testing ground for Mars mission instruments.",
+      "source_url": "https://en.wikipedia.org/wiki/Atacama_Desert",
+      "tags": []
+    },
+    {
+      "name": "Mars Desert Research Station, Utah",
+      "lat": 38.4065,
+      "lon": -110.7919,
+      "bodies": [
+        "mars"
+      ],
+      "kind": "environment",
+      "use": "Mars Society analog habitat for simulated missions.",
+      "source_url": "https://en.wikipedia.org/wiki/Mars_Desert_Research_Station",
+      "tags": []
+    },
+    {
+      "name": "Meteor Crater, Arizona",
+      "lat": 35.0281,
+      "lon": -111.0233,
+      "bodies": [
+        "moon"
+      ],
+      "kind": "environment",
+      "use": "Arid impact crater used for Apollo astronaut training.",
+      "source_url": "https://en.wikipedia.org/wiki/Meteor_Crater",
+      "tags": []
+    },
+    {
+      "name": "Craters of the Moon, Idaho",
+      "lat": 43.4617,
+      "lon": -113.5627,
+      "bodies": [
+        "moon"
+      ],
+      "kind": "environment",
+      "use": "Basalt lava field used for Apollo astronaut geology training.",
+      "source_url": "https://en.wikipedia.org/wiki/Craters_of_the_Moon_National_Monument_and_Preserve",
+      "tags": []
+    },
+    {
+      "name": "Askja, Iceland",
+      "lat": 65.033,
+      "lon": -16.783,
+      "bodies": [
+        "moon"
+      ],
+      "kind": "environment",
+      "use": "Barren volcanic highland where Apollo astronauts trained.",
+      "source_url": "https://en.wikipedia.org/wiki/Askja",
+      "tags": []
+    },
+    {
+      "name": "Kilauea, Hawaii",
+      "lat": 19.4211,
+      "lon": -155.2868,
+      "bodies": [
+        "moon"
+      ],
+      "kind": "geology",
+      "use": "NASA trained Apollo astronauts here to recognise volcanic features.",
+      "source_url": "https://en.wikipedia.org/wiki/K%C4%ABlauea",
+      "tags": []
+    },
+    {
+      "name": "Sudbury Basin, Ontario",
+      "lat": 46.6,
+      "lon": -81.1833,
+      "bodies": [
+        "moon"
+      ],
+      "kind": "geology",
+      "use": "Impact structure used for Apollo astronaut geology training.",
+      "source_url": "https://en.wikipedia.org/wiki/Sudbury_Basin",
+      "tags": []
+    },
+    {
+      "name": "Nordlinger Ries, Germany",
+      "lat": 48.8833,
+      "lon": 10.5667,
+      "bodies": [
+        "moon"
+      ],
+      "kind": "geology",
+      "use": "Impact crater used for Apollo astronaut geology training.",
+      "source_url": "https://en.wikipedia.org/wiki/N%C3%B6rdlinger_Ries",
+      "tags": []
+    },
+    {
+      "name": "Rio Tinto, Spain",
+      "lat": 37.21,
+      "lon": -6.938,
+      "bodies": [
+        "mars"
+      ],
+      "kind": "geology",
+      "use": "Acidic, iron-rich river compared with the chemistry of Meridiani Planum on Mars.",
+      "source_url": "https://en.wikipedia.org/wiki/R%C3%ADo_Tinto_%28river%29",
+      "tags": []
+    }
+  ],
+  "negatives": [
+    {
+      "name": "Amazon rainforest",
+      "lat": -3.0,
+      "lon": -60.0,
+      "reason": "dense vegetation or humid climate"
+    },
+    {
+      "name": "Congo Basin rainforest",
+      "lat": 0.5,
+      "lon": 20.0,
+      "reason": "dense vegetation or humid climate"
+    },
+    {
+      "name": "Borneo rainforest",
+      "lat": 1.0,
+      "lon": 114.0,
+      "reason": "dense vegetation or humid climate"
+    },
+    {
+      "name": "Iowa cropland",
+      "lat": 42.0,
+      "lon": -93.5,
+      "reason": "dense vegetation or humid climate"
+    },
+    {
+      "name": "Dhaka, Bangladesh",
+      "lat": 23.8,
+      "lon": 90.4,
+      "reason": "dense vegetation or humid climate"
+    },
+    {
+      "name": "West Siberian taiga",
+      "lat": 60.0,
+      "lon": 75.0,
+      "reason": "dense vegetation or humid climate"
+    },
+    {
+      "name": "South-eastern US forest",
+      "lat": 33.0,
+      "lon": -85.0,
+      "reason": "dense vegetation or humid climate"
+    },
+    {
+      "name": "Western Europe farmland",
+      "lat": 48.0,
+      "lon": 2.0,
+      "reason": "dense vegetation or humid climate"
+    }
+  ]
+}

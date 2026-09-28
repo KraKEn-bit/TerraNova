@@ -1,3 +1,5 @@
+> **Outdated (v1, 27 Sep 2026).** This describes the first prototype (aridity index, six equal-weight criteria, linear mean). See `README.md` for the current system.
+
 # Earth Analogue Finder — System Architecture & Implementation Guide
 
 

@@ -11,7 +11,19 @@ venv/
 # Raw downloads (~1.1 GB) are reproducible from src/acquire. The derived
 # arrays and the predictor stack stay in the repo so the demo, the tests and
 # `--stage assemble` all run with OFFLINE=1.
-cache/raw/
+cache/raw/*
+# ...except the small vector files the offline gazetteer and land mask need.
+!cache/raw/ne_*.geojson
 
 # Legacy prototype kept out of this repository's history.
 prototype_v1/
+
+# Local workspace
+.env
+__pycache__/
+
+# Detail imagery tiles: large, re-fetchable (python -m src.acquire.tiles)
+cache/tiles/
+
+# God's Eye elevation and imagery tiles (python -m src.acquire.sitetiles)
+cache/sitetiles/

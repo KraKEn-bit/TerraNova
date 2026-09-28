@@ -23,7 +23,12 @@ import numpy as np
 
 from src.acquire.download import REPO_ROOT
 from src.compute.gazetteer import Label
-from src.compute.similarity import CRITERIA, CriterionRange, SimilarityResult
+from src.compute.similarity import (
+    CRITERIA,
+    CriterionRange,
+    SimilarityResult,
+    load_normalization,
+)
 
 TARGETS_PATH = REPO_ROOT / "data" / "targets.json"
 
@@ -76,9 +81,23 @@ class Rationale:
         }
 
 
-def load_targets(path: str | Path | None = None) -> dict[str, dict[str, object]]:
+def load_targets(
+    path: str | Path | None = None,
+    ranges: Mapping[str, CriterionRange] | None = None,
+) -> dict[str, dict[str, object]]:
+    """Target catalogue with every criterion resolved to a numeric ``value``.
+
+    Criteria given as an ``earth_percentile`` terrain class are resolved through
+    the Earth quantile table in data/normalization.json.
+    """
     source = Path(path) if path is not None else TARGETS_PATH
     raw = json.loads(source.read_text(encoding="utf-8"))
+    specs = ranges if ranges is not None else load_normalization()
+    for entry in raw["targets"]:
+        for key, criterion in entry["criteria"].items():
+            if "value" not in criterion and "earth_percentile" in criterion:
+                value = specs[key].value_at_percentile(float(criterion["earth_percentile"]))
+                criterion["value"] = round(value, 4)
     return {str(entry["id"]): entry for entry in raw["targets"]}
 
 
@@ -144,10 +163,9 @@ def explain_cell(
         f"Scores {score:.0%} against {target_entry['short_name']} ({target_entry['body']}){where}."
     )
 
-    weight_total = float(sum(result.weights.values())) or 1.0
-    share = {key: result.weights[key] / weight_total for key in CRITERIA}
+    active = [key for key in CRITERIA if result.weights[key] > 0]
     order = sorted(
-        CRITERIA, key=lambda key: (-float(result.similarities[key][row, col]), CRITERIA.index(key))
+        active, key=lambda key: (-float(result.similarities[key][row, col]), CRITERIA.index(key))
     )
     drivers = tuple(order[:top_drivers])
 
@@ -159,21 +177,40 @@ def explain_cell(
         raw_value = float(np.asarray(stack[key])[row, col])
         if not math.isfinite(raw_value):
             continue
-        target_value = float(meta["value"])
+        target_value = float(result.target[key])  # type: ignore[arg-type]
+        effective = float(result.effective_target[key])  # type: ignore[arg-type]
 
         if key in drivers:
             lead = f"{spec.label} is a main driver"
         elif similarity < 0.35:
             lead = f"{spec.label} is the weakest fit"
         else:
-            lead = f"{spec.label} still contributes {share[key] * similarity:.0%} of the score"
+            lead = f"{spec.label}"
+
+        target_text = f"a target of {format_value(effective, spec.unit)}"
+        if "earth_percentile" in meta:
+            measured = meta.get("measured_value")
+            measured_text = (
+                f"; measured {format_value(float(measured), spec.unit)}"
+                f" at {meta.get('baseline') or 'a finer scale'}"
+                if measured is not None
+                else "; qualitative"
+            )
+            target_text += (
+                f" (Earth-percentile class: {float(meta['earth_percentile']):.0f}th{measured_text})"
+            )
+        elif not math.isclose(effective, target_value, rel_tol=1e-9, abs_tol=1e-9):
+            edge = "upper" if target_value > effective else "lower"
+            target_text += (
+                f" (the real target, {format_value(target_value, spec.unit)}, lies outside the"
+                f" range covering 99% of Earth's land, so the {edge} edge of that range is used)"
+            )
 
         claims.append(
             Claim(
                 text=(
-                    f"{lead}: {format_value(raw_value, spec.unit)} against a target of "
-                    f"{format_value(target_value, spec.unit)} - {band_for(similarity)} "
-                    f"({similarity:.0%})."
+                    f"{lead}: {format_value(raw_value, spec.unit)} against {target_text}"
+                    f" - {band_for(similarity)} ({similarity:.0%})."
                 ),
                 criterion=key,
                 dataset_id=str(meta.get("dataset_id") or "") or None,
@@ -182,7 +219,7 @@ def explain_cell(
         )
 
     caveats: list[Claim] = []
-    for key in CRITERIA:
+    for key in active:
         meta = target_criteria[key]
         note = str(meta.get("definition_note", "")).strip()
         baseline = str(meta.get("baseline", "") or "").strip()

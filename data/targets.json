@@ -1,7 +1,7 @@
 {
-  "schema_version": "1.0",
-  "description": "Extraterrestrial base-site targets scored against the Earth predictor stack. Every numeric claim carries its own dataset_id and source_url; the target-level source_url is the single best overall reference for the site. Values are quoted in the same units as the Earth predictors stored in cache/predictors.zarr.",
-  "units_note": "Temperature ranges are differences, so kelvin and degrees Celsius are numerically identical; they are recorded as K. Elevation is relative to each body's own datum (Earth mean sea level, Moon mean lunar radius, Mars areoid) and is NOT cross-body comparable at face value - see README section 'Limitations'.",
+  "schema_version": "2.0",
+  "description": "Extraterrestrial base-site targets scored against the Earth predictor stack. Every criterion carries its own dataset_id and source_url. A criterion is given either as a measured 'value' in the Earth predictor's units, or - where the measurement was made at a scale the 0.5 degree Earth grid cannot resolve - as an 'earth_percentile' terrain class, with the original measurement kept in 'measured_value' and explained in 'definition_note'. A criterion whose 'value' is null is not used for that target (weight forced to 0). A target may set its own default 'weights' and a 'validation_tag' selecting which known-analog sites count as positives.",
+  "units_note": "Targets are compared with Earth through proxies, not identities. Values beyond anything found on Earth are scored against Earth's most extreme value (0.5th/99.5th percentile over land), and terrain criteria measured at metre scales are expressed as Earth-percentile terrain classes. Treat the ranking as a screening tool, not a site survey.",
   "targets": [
     {
       "id": "lunar_south_pole",
@@ -12,15 +12,25 @@
       "longitude": 0.0,
       "source_url": "https://iopscience.iop.org/article/10.3847/PSJ/aca590",
       "source_label": "Gawronska et al. (2022), Planet. Sci. J., geologic context and EVA targets at the lunar south pole",
-      "summary": "Artemis III candidate region on the rim of Shackleton crater: permanently shadowed volatile cold traps adjacent to high-illumination ridges, over extremely rugged polar topography.",
+      "summary": "Artemis III candidate region on the rim of Shackleton crater: permanently shadowed volatile cold traps next to high-illumination ridges, over extremely rugged polar topography.",
+      "trek_url": "https://trek.nasa.gov/moon/",
       "criteria": {
-        "aridity": {
+        "precipitation": {
           "value": 0.0,
-          "unit": "1",
+          "unit": "mm/yr",
           "dataset_id": "nssdc_moon_fact_sheet",
           "source_url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/moonfact.html",
           "baseline": null,
-          "definition_note": "The Moon has no atmosphere and no liquid-water precipitation, so the liquid-water aridity index (P/PET) is 0 by definition.",
+          "definition_note": "The Moon has no atmosphere and therefore no precipitation. Scored against Earth's driest land.",
+          "confidence": "high"
+        },
+        "vegetation": {
+          "value": 0.0,
+          "unit": "NDVI",
+          "dataset_id": "nasa_moon_facts",
+          "source_url": "https://science.nasa.gov/moon/facts/",
+          "baseline": null,
+          "definition_note": "No biosphere: the surface is bare regolith. The Earth equivalent is ground with no detectable vegetation (NDVI near 0).",
           "confidence": "high"
         },
         "annual_temperature_range": {
@@ -29,35 +39,8 @@
           "dataset_id": "diviner_polar_seasonal_maps",
           "source_url": "https://agupubs.onlinelibrary.wiley.com/doi/10.1029/2019JE006028",
           "baseline": "seasonal, summer vs winter",
-          "definition_note": "Lower bound: seasonally shadowed regions poleward of 80 deg S show >=100 K variation in maximum surface temperature between summer and winter (LRO Diviner polar maps). Reported as a lower bound on the annual range, not as a monthly-mean range, so it is not defined identically to the Earth predictor.",
+          "definition_note": "Lower bound: seasonally shadowed regions poleward of 80 deg S show >=100 K variation in maximum surface temperature between summer and winter (LRO Diviner polar maps). This is beyond anything on Earth, so it is scored against Earth's largest annual range.",
           "confidence": "medium"
-        },
-        "elevation": {
-          "value": 1290.0,
-          "unit": "m",
-          "dataset_id": "lola_5m_south_polar_dem",
-          "source_url": "https://repository.hou.usra.edu/server/api/core/bitstreams/e56463a3-68f0-49ab-986f-b16a240e2768/content",
-          "baseline": null,
-          "definition_note": "Elevation of the lunar south pole on the rim of Shackleton crater from a LOLA 5 m/pixel DEM, referenced to mean lunar radius. The surrounding Shackleton rim spans roughly 900 to 1760 m.",
-          "confidence": "high"
-        },
-        "slope": {
-          "value": 9.5,
-          "unit": "degrees",
-          "dataset_id": "change2_dem_20m_south_polar",
-          "source_url": "https://www.mdpi.com/2072-4292/14/19/4863",
-          "baseline": "regional mean, 20 m posts",
-          "definition_note": "Mean terrain slope over all terrain poleward of 80 degrees S computed from the Chang'E-2 20 m/pixel DEM (reported range 0 to 80 degrees). This is a regional mean, not a value at the pole point.",
-          "confidence": "high"
-        },
-        "roughness": {
-          "value": 1.0,
-          "unit": "m",
-          "dataset_id": "lola_shackleton_rms_roughness",
-          "source_url": "https://ntrs.nasa.gov/api/citations/20120013758/downloads/20120013758.pdf",
-          "baseline": "5-10 m",
-          "definition_note": "RMS height residual about a least-squares plane fitted to LOLA profiles for the exterior, walls, floor and rim of Shackleton crater; all four components are reported as approximately 1 m. Measured at a 5-10 m baseline, about three orders of magnitude shorter than the Earth predictor baseline.",
-          "confidence": "high"
         },
         "lst_diurnal_range": {
           "value": 120.0,
@@ -65,8 +48,230 @@
           "dataset_id": "diviner_global_diurnal_lst",
           "source_url": "https://www.sciencedirect.com/science/article/pii/S0019103516304869",
           "baseline": "noon to midnight",
-          "definition_note": "Noon-to-midnight variation of bolometric brightness temperature at 85 degrees latitude from LRO Diviner (the equatorial value is about 290 K). Used as the diurnal land-surface-temperature range of the south polar site.",
+          "definition_note": "Noon-to-midnight variation of bolometric brightness temperature at 85 degrees latitude from LRO Diviner (about 290 K at the equator). No Earth surface swings this much, so it is scored against Earth's largest day-night swing.",
           "confidence": "medium"
+        },
+        "slope": {
+          "earth_percentile": 85,
+          "measured_value": 9.5,
+          "unit": "degrees",
+          "dataset_id": "change2_dem_20m_south_polar",
+          "source_url": "https://www.mdpi.com/2072-4292/14/19/4863",
+          "baseline": "regional mean, 20 m posts",
+          "definition_note": "Measured: mean slope 9.5 deg over all terrain poleward of 80 S (Chang'E-2 20 m DEM). A 20 m slope cannot be compared with a ~55 km regional slope, so the target is the terrain class 'rugged': Earth's 85th-percentile regional slope. Replace with a matched-scale value once PGDA Product 78 slope maps are processed.",
+          "confidence": "low"
+        },
+        "roughness": {
+          "earth_percentile": 85,
+          "measured_value": 1.0,
+          "unit": "m",
+          "dataset_id": "lola_shackleton_rms_roughness",
+          "source_url": "https://ntrs.nasa.gov/api/citations/20120013758/downloads/20120013758.pdf",
+          "baseline": "5-10 m",
+          "definition_note": "Measured: ~1 m RMS height about a local plane at a 5-10 m baseline (LOLA, Shackleton exterior, walls, floor and rim). The Earth predictor uses a ~28 km window, so the target is the terrain class 'rugged' (km-scale crater and massif relief): Earth's 85th-percentile roughness.",
+          "confidence": "low"
+        },
+        "elevation": {
+          "value": 1290.0,
+          "unit": "m",
+          "dataset_id": "lola_5m_south_polar_dem",
+          "source_url": "https://repository.hou.usra.edu/server/api/core/bitstreams/e56463a3-68f0-49ab-986f-b16a240e2768/content",
+          "baseline": null,
+          "definition_note": "Elevation on the Shackleton rim from a LOLA 5 m/pixel DEM, relative to the mean lunar radius. Not comparable with Earth's sea-level datum; weighted 0 by default.",
+          "confidence": "high"
+        },
+        "mean_annual_temperature": {
+          "value": null,
+          "unit": "°C",
+          "dataset_id": "not_used",
+          "source_url": "https://power.larc.nasa.gov/docs/services/api/temporal/climatology/",
+          "baseline": null,
+          "definition_note": "Not used for this target: the site is sunlit or seasonally lit, so absolute temperature is not the engineering challenge being matched.",
+          "confidence": "high"
+        }
+      },
+      "group": "Lunar south pole"
+    },
+    {
+      "id": "malapert_massif",
+      "name": "Malapert Massif, Moon",
+      "short_name": "Malapert Massif",
+      "body": "Moon",
+      "group": "Lunar south pole",
+      "latitude": -84.9,
+      "longitude": 12.9,
+      "location_note": "Pin shows Malapert crater (84.9 S, 12.9 E). The massif is the ~5 km-high rise formed partly by the crater's south-western rim, with its peak close to 0 deg longitude.",
+      "source_url": "https://www.nasa.gov/news-release/nasa-provides-update-on-artemis-iii-moon-landing-regions/",
+      "source_label": "NASA (28 Oct 2024): Malapert Massif is one of nine Artemis III candidate landing regions",
+      "summary": "Artemis III candidate landing region on a ~5 km-high massif near the south pole, in sight of both Earth and Shackleton crater: high, sunlit and very rugged terrain.",
+      "trek_url": "https://trek.nasa.gov/moon/",
+      "criteria": {
+        "precipitation": {
+          "value": 0.0,
+          "unit": "mm/yr",
+          "dataset_id": "nssdc_moon_fact_sheet",
+          "source_url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/moonfact.html",
+          "baseline": null,
+          "definition_note": "The Moon has no atmosphere and therefore no precipitation. Scored against Earth's driest land.",
+          "confidence": "high"
+        },
+        "vegetation": {
+          "value": 0.0,
+          "unit": "NDVI",
+          "dataset_id": "nasa_moon_facts",
+          "source_url": "https://science.nasa.gov/moon/facts/",
+          "baseline": null,
+          "definition_note": "No biosphere: the surface is bare regolith. The Earth equivalent is ground with no detectable vegetation (NDVI near 0).",
+          "confidence": "high"
+        },
+        "annual_temperature_range": {
+          "value": 100.0,
+          "unit": "K",
+          "dataset_id": "diviner_polar_seasonal_maps",
+          "source_url": "https://agupubs.onlinelibrary.wiley.com/doi/10.1029/2019JE006028",
+          "baseline": "seasonal, summer vs winter",
+          "definition_note": "Lower bound: seasonally shadowed regions poleward of 80 deg S show >=100 K variation in maximum surface temperature between summer and winter (LRO Diviner polar maps). This is beyond anything on Earth, so it is scored against Earth's largest annual range.",
+          "confidence": "medium"
+        },
+        "lst_diurnal_range": {
+          "value": 120.0,
+          "unit": "K",
+          "dataset_id": "diviner_global_diurnal_lst",
+          "source_url": "https://www.sciencedirect.com/science/article/pii/S0019103516304869",
+          "baseline": "noon to midnight",
+          "definition_note": "Noon-to-midnight variation of bolometric brightness temperature at 85 degrees latitude from LRO Diviner (about 290 K at the equator). No Earth surface swings this much, so it is scored against Earth's largest day-night swing.",
+          "confidence": "medium"
+        },
+        "slope": {
+          "earth_percentile": 95,
+          "measured_value": 9.5,
+          "unit": "degrees",
+          "dataset_id": "wikipedia_malapert_crater",
+          "source_url": "https://en.wikipedia.org/wiki/Malapert_(crater)",
+          "baseline": "regional mean of the polar region, 20 m posts",
+          "definition_note": "A ~5 km-high rise (Malapert Mountain) is steeper than the average polar terrain (9.5 deg mean slope poleward of 80 S, Chang'E-2 20 m DEM), so the terrain class is 'very rugged': Earth's 95th-percentile regional slope. Editorial class, not a measurement; replace with PGDA Product 78 slopes.",
+          "confidence": "low"
+        },
+        "roughness": {
+          "earth_percentile": 95,
+          "measured_value": 1.0,
+          "unit": "m",
+          "dataset_id": "wikipedia_malapert_crater",
+          "source_url": "https://en.wikipedia.org/wiki/Malapert_(crater)",
+          "baseline": "5-10 m (LOLA, Shackleton)",
+          "definition_note": "Kilometre-scale relief of a 5 km massif puts it in the 'very rugged' class: Earth's 95th-percentile roughness. Editorial class, not a measurement.",
+          "confidence": "low"
+        },
+        "elevation": {
+          "value": null,
+          "unit": "m",
+          "dataset_id": "not_used",
+          "source_url": "https://en.wikipedia.org/wiki/Malapert_(crater)",
+          "baseline": null,
+          "definition_note": "Not used: lunar heights are measured from the Moon's own datum.",
+          "confidence": "high"
+        },
+        "mean_annual_temperature": {
+          "value": null,
+          "unit": "°C",
+          "dataset_id": "not_used",
+          "source_url": "https://power.larc.nasa.gov/docs/services/api/temporal/climatology/",
+          "baseline": null,
+          "definition_note": "Not used for this target: the site is sunlit or seasonally lit, so absolute temperature is not the engineering challenge being matched.",
+          "confidence": "high"
+        }
+      }
+    },
+    {
+      "id": "haworth_psr",
+      "name": "Haworth crater cold trap, Moon",
+      "short_name": "Haworth cold trap",
+      "body": "Moon",
+      "group": "Lunar south pole",
+      "latitude": -86.9,
+      "longitude": -4.0,
+      "source_url": "https://www.nasa.gov/news-release/nasa-provides-update-on-artemis-iii-moon-landing-regions/",
+      "source_label": "NASA (28 Oct 2024): Haworth is one of nine Artemis III candidate landing regions",
+      "summary": "Permanently shadowed crater near the south pole, among the coldest places on the Moon: a cold trap for water ice. Earth cannot reach its temperature, so the match is to Earth's coldest, driest, most thermally stable land.",
+      "trek_url": "https://trek.nasa.gov/moon/",
+      "validation_tag": "cold_polar",
+      "weights": {
+        "mean_annual_temperature": 2.0
+      },
+      "criteria": {
+        "precipitation": {
+          "value": 0.0,
+          "unit": "mm/yr",
+          "dataset_id": "nssdc_moon_fact_sheet",
+          "source_url": "https://nssdc.gsfc.nasa.gov/planetary/factsheet/moonfact.html",
+          "baseline": null,
+          "definition_note": "The Moon has no atmosphere and therefore no precipitation. Scored against Earth's driest land.",
+          "confidence": "high"
+        },
+        "vegetation": {
+          "value": 0.0,
+          "unit": "NDVI",
+          "dataset_id": "nasa_moon_facts",
+          "source_url": "https://science.nasa.gov/moon/facts/",
+          "baseline": null,
+          "definition_note": "No biosphere: the surface is bare regolith. The Earth equivalent is ground with no detectable vegetation (NDVI near 0).",
+          "confidence": "high"
+        },
+        "mean_annual_temperature": {
+          "value": -233.0,
+          "unit": "°C",
+          "dataset_id": "wikipedia_haworth_crater",
+          "source_url": "https://en.wikipedia.org/wiki/Haworth_(crater)",
+          "baseline": null,
+          "definition_note": "Many of Haworth's permanently shadowed regions are believed never to exceed 40 K (-233 C). Far colder than anywhere on Earth, so it is matched to Earth's coldest land. Weighted x2 for this target because 'cold' is the defining challenge of a cold trap.",
+          "confidence": "medium"
+        },
+        "annual_temperature_range": {
+          "earth_percentile": 5,
+          "measured_value": 40.0,
+          "unit": "K",
+          "dataset_id": "wikipedia_haworth_crater",
+          "source_url": "https://en.wikipedia.org/wiki/Haworth_(crater)",
+          "baseline": "upper bound: never above 40 K",
+          "definition_note": "Shadowed regions that never exceed 40 K cannot swing much between seasons, so the class is 'very stable': Earth's 5th-percentile annual range. Editorial class; the measured_value is the 40 K ceiling, not a range.",
+          "confidence": "low"
+        },
+        "lst_diurnal_range": {
+          "earth_percentile": 0,
+          "measured_value": 0.0,
+          "unit": "K",
+          "dataset_id": "wikipedia_haworth_crater",
+          "source_url": "https://en.wikipedia.org/wiki/Haworth_(crater)",
+          "baseline": "permanent shadow",
+          "definition_note": "Permanently shadowed ground never receives direct sunlight, so there is no solar day-night swing; matched to Earth's smallest swing.",
+          "confidence": "medium"
+        },
+        "slope": {
+          "value": null,
+          "unit": "degrees",
+          "dataset_id": "not_used",
+          "source_url": "https://en.wikipedia.org/wiki/Haworth_(crater)",
+          "baseline": null,
+          "definition_note": "Not used: terrain inside the shadowed floor is not characterised here. Add it from PGDA Product 78 (Haworth files).",
+          "confidence": "high"
+        },
+        "roughness": {
+          "value": null,
+          "unit": "m",
+          "dataset_id": "not_used",
+          "source_url": "https://en.wikipedia.org/wiki/Haworth_(crater)",
+          "baseline": null,
+          "definition_note": "Not used: see slope.",
+          "confidence": "high"
+        },
+        "elevation": {
+          "value": null,
+          "unit": "m",
+          "dataset_id": "not_used",
+          "source_url": "https://en.wikipedia.org/wiki/Haworth_(crater)",
+          "baseline": null,
+          "definition_note": "Not used: lunar heights are measured from the Moon's own datum.",
+          "confidence": "high"
         }
       }
     },
@@ -80,14 +285,24 @@
       "source_url": "https://www.esa.int/ESA_Multimedia/Images/2021/02/Topographic_map_of_Jezero_crater_and_surrounds",
       "source_label": "ESA topographic map of Jezero crater and surrounds (HRSC / MOLA)",
       "summary": "Perseverance rover landing site: a Noachian lake basin with two fluvial deltas on the western edge of the Isidis impact structure, roughly 2.6 km below the Mars areoid.",
+      "trek_url": "https://trek.nasa.gov/mars/",
       "criteria": {
-        "aridity": {
+        "precipitation": {
           "value": 0.0,
-          "unit": "1",
+          "unit": "mm/yr",
           "dataset_id": "mars_modern_water_cycle_review",
           "source_url": "https://www.annualreviews.org/content/journals/10.1146/annurev-earth-072420-071823",
           "baseline": null,
-          "definition_note": "Modern Mars has no stable liquid water at the surface and no liquid-water precipitation, so the liquid-water aridity index (P/PET) is 0; only vapour and ice cycles operate.",
+          "definition_note": "Modern Mars has no stable liquid water at the surface and no liquid-water precipitation; only vapour and ice cycles operate. Scored against Earth's driest land.",
+          "confidence": "high"
+        },
+        "vegetation": {
+          "value": 0.0,
+          "unit": "NDVI",
+          "dataset_id": "nasa_mars_facts",
+          "source_url": "https://science.nasa.gov/mars/facts/",
+          "baseline": null,
+          "definition_note": "No known biosphere: the surface is bare rock and regolith. The Earth equivalent is ground with no detectable vegetation (NDVI near 0).",
           "confidence": "high"
         },
         "annual_temperature_range": {
@@ -99,41 +314,142 @@
           "definition_note": "Seasonal amplitude of daily-mean ground temperature at Jezero over Mars Year 36: daily means span 210 to 232 K. At 1.45 m the daily-mean amplitude is 16 K and the annual amplitude of daily-maximum air temperature reaches 35 K.",
           "confidence": "high"
         },
-        "elevation": {
-          "value": -2600.0,
-          "unit": "m",
-          "dataset_id": "esa_hrsc_jezero_topography",
-          "source_url": "https://www.esa.int/ESA_Multimedia/Images/2021/02/Topographic_map_of_Jezero_crater_and_surrounds",
-          "baseline": null,
-          "definition_note": "Jezero crater floor elevation below the Mars areoid (a notional equipotential surface analogous to sea level). ESA reports approximately -2600 m; DLR and FU Berlin report -2700 m for the floor; the Mars 2020 landing-ellipse centre is quoted at -2550 m.",
-          "confidence": "high"
-        },
-        "slope": {
-          "value": 3.4,
-          "unit": "degrees",
-          "dataset_id": "hirise_jezero_reference_dtm",
-          "source_url": "https://www.mdpi.com/2072-4292/13/17/3511",
-          "baseline": "50 m",
-          "definition_note": "RMS adirectional slope over a 50 m baseline for the smooth Jezero crater-floor sub-area of the Mars 2020 landing site, from the HiRISE reference DTM (Kirk et al. 2021, Table 2). The full HiRISE study area gives 7.09 degrees and the crater rim 11.29 degrees at the same baseline.",
-          "confidence": "high"
-        },
-        "roughness": {
-          "value": 1.0,
-          "unit": "m",
-          "dataset_id": "mola_terrain_rms_northern_lowlands",
-          "source_url": "https://pgda.gsfc.nasa.gov/products/62",
-          "baseline": "~75 m MOLA footprint",
-          "definition_note": "PROXY: no Jezero-specific RMS-height roughness is published. This is the modal MOLA terrain RMS roughness reported for the Martian northern lowlands; Jezero sits on western Isidis Planitia, which is part of that unit. Treat as a regional proxy, not a site measurement.",
-          "confidence": "low"
-        },
         "lst_diurnal_range": {
           "value": 86.0,
           "unit": "K",
           "dataset_id": "meda_tirs_jezero_ground_temperature",
           "source_url": "https://helda.helsinki.fi/bitstreams/e4a9b306-b09a-45e8-96a8-e2a07a56d716/download",
           "baseline": "single sol",
-          "definition_note": "Ground-skin temperature range on sol 189 (Ls 89-98 deg, 191 to 277 K), a high-insolation season. The low-insolation case on sols 138-152 gives 56 K (204 to 260 K), so 86 K is the upper end of the observed per-sol diurnal range at Jezero.",
+          "definition_note": "Ground-skin temperature range on sol 189 (191 to 277 K), a high-insolation season; 56 K in low insolation. Beyond anything on Earth, so it is scored against Earth's largest day-night swing.",
           "confidence": "medium"
+        },
+        "slope": {
+          "earth_percentile": 40,
+          "measured_value": 3.4,
+          "unit": "degrees",
+          "dataset_id": "hirise_jezero_reference_dtm",
+          "source_url": "https://www.mdpi.com/2072-4292/13/17/3511",
+          "baseline": "50 m",
+          "definition_note": "Measured: 3.4 deg RMS slope at a 50 m baseline on the smooth crater floor (7.09 deg for the full HiRISE study area, 11.29 deg on the rim; Kirk et al. 2021). A 50 m slope cannot be compared with a ~55 km regional slope, so the target is the terrain class 'gentle': Earth's 40th-percentile regional slope.",
+          "confidence": "low"
+        },
+        "roughness": {
+          "earth_percentile": 30,
+          "measured_value": 1.0,
+          "unit": "m",
+          "dataset_id": "mola_terrain_rms_northern_lowlands",
+          "source_url": "https://pgda.gsfc.nasa.gov/products/62",
+          "baseline": "~75 m MOLA footprint",
+          "definition_note": "PROXY: no Jezero-specific roughness is published. The modal MOLA RMS roughness of the northern lowlands (which include Isidis Planitia) is ~1 m. These plains are among the smoothest terrains on Mars, so the target is the terrain class 'smooth': Earth's 30th-percentile roughness.",
+          "confidence": "low"
+        },
+        "elevation": {
+          "value": -2600.0,
+          "unit": "m",
+          "dataset_id": "esa_hrsc_jezero_topography",
+          "source_url": "https://www.esa.int/ESA_Multimedia/Images/2021/02/Topographic_map_of_Jezero_crater_and_surrounds",
+          "baseline": null,
+          "definition_note": "Jezero crater floor, about 2600 m below the Mars areoid. Not comparable with Earth's sea-level datum; weighted 0 by default.",
+          "confidence": "high"
+        },
+        "mean_annual_temperature": {
+          "value": null,
+          "unit": "°C",
+          "dataset_id": "not_used",
+          "source_url": "https://power.larc.nasa.gov/docs/services/api/temporal/climatology/",
+          "baseline": null,
+          "definition_note": "Not used for this target: the site is sunlit or seasonally lit, so absolute temperature is not the engineering challenge being matched.",
+          "confidence": "high"
+        }
+      },
+      "group": "Mars"
+    },
+    {
+      "id": "gale_crater",
+      "name": "Gale Crater and Mount Sharp, Mars",
+      "short_name": "Gale Crater",
+      "body": "Mars",
+      "group": "Mars",
+      "latitude": -5.4,
+      "longitude": 137.8,
+      "source_url": "https://en.wikipedia.org/wiki/Gale_(crater)",
+      "source_label": "Gale crater (Curiosity rover site): layered central mound, Mount Sharp",
+      "summary": "Curiosity rover site: a crater floor rising into Mount Sharp, a layered sedimentary mound recording a change from clays to sulfates. Matched here on climate and terrain; mineralogy is not yet a criterion.",
+      "trek_url": "https://trek.nasa.gov/mars/",
+      "criteria": {
+        "precipitation": {
+          "value": 0.0,
+          "unit": "mm/yr",
+          "dataset_id": "mars_modern_water_cycle_review",
+          "source_url": "https://www.annualreviews.org/content/journals/10.1146/annurev-earth-072420-071823",
+          "baseline": null,
+          "definition_note": "Modern Mars has no stable liquid water at the surface and no liquid-water precipitation; only vapour and ice cycles operate. Scored against Earth's driest land.",
+          "confidence": "high"
+        },
+        "vegetation": {
+          "value": 0.0,
+          "unit": "NDVI",
+          "dataset_id": "nasa_mars_facts",
+          "source_url": "https://science.nasa.gov/mars/facts/",
+          "baseline": null,
+          "definition_note": "No known biosphere: the surface is bare rock and regolith. The Earth equivalent is ground with no detectable vegetation (NDVI near 0).",
+          "confidence": "high"
+        },
+        "annual_temperature_range": {
+          "value": 22.0,
+          "unit": "K",
+          "dataset_id": "rems_gale_2012_2015_climate_table",
+          "source_url": "https://en.wikipedia.org/wiki/Climate_of_Mars",
+          "baseline": "monthly means, 2012-2015",
+          "definition_note": "From the Gale Crater climate table (Curiosity REMS, Centro de Astrobiologia, 2012-2015, seasons normalised to Earth months): monthly means taken as (mean daily high + mean daily low) / 2 range from -55.5 C to -33.5 C. Air temperature, not ground temperature.",
+          "confidence": "medium"
+        },
+        "lst_diurnal_range": {
+          "value": 72.8,
+          "unit": "K",
+          "dataset_id": "rems_gale_2012_2015_climate_table",
+          "source_url": "https://en.wikipedia.org/wiki/Climate_of_Mars",
+          "baseline": "annual mean daily high minus low",
+          "definition_note": "Mean daily high -5.7 C minus mean daily low -78.5 C (Curiosity REMS, 2012-2015). Air temperature; beyond anything on Earth, so it is matched to Earth's largest day-night swing.",
+          "confidence": "medium"
+        },
+        "slope": {
+          "earth_percentile": 75,
+          "measured_value": null,
+          "unit": "degrees",
+          "dataset_id": "wikipedia_gale_crater",
+          "source_url": "https://en.wikipedia.org/wiki/Gale_(crater)",
+          "baseline": "qualitative",
+          "definition_note": "Curiosity drives from the crater floor up the foothills of Mount Sharp, a mound several kilometres high: terrain class 'hilly', Earth's 75th-percentile regional slope. Editorial class; replace with a HiRISE DTM value.",
+          "confidence": "low"
+        },
+        "roughness": {
+          "earth_percentile": 75,
+          "measured_value": null,
+          "unit": "m",
+          "dataset_id": "wikipedia_gale_crater",
+          "source_url": "https://en.wikipedia.org/wiki/Gale_(crater)",
+          "baseline": "qualitative",
+          "definition_note": "Layered mound foothills: terrain class 'hilly', Earth's 75th-percentile roughness. Editorial class.",
+          "confidence": "low"
+        },
+        "elevation": {
+          "value": null,
+          "unit": "m",
+          "dataset_id": "not_used",
+          "source_url": "https://en.wikipedia.org/wiki/Gale_(crater)",
+          "baseline": null,
+          "definition_note": "Not used: Mars heights are measured from the areoid.",
+          "confidence": "high"
+        },
+        "mean_annual_temperature": {
+          "value": null,
+          "unit": "°C",
+          "dataset_id": "not_used",
+          "source_url": "https://power.larc.nasa.gov/docs/services/api/temporal/climatology/",
+          "baseline": null,
+          "definition_note": "Not used for this target: the site is sunlit or seasonally lit, so absolute temperature is not the engineering challenge being matched.",
+          "confidence": "high"
         }
       }
     }

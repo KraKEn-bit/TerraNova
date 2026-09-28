@@ -6,6 +6,7 @@ pydantic==2.10.5
 rasterio==1.5.1
 scipy==1.16.3
 starlette==1.6.0
+truststore==0.10.4
 zarr==3.4.0
 
 # Server

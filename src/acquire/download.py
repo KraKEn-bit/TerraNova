@@ -11,6 +11,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+try:  # verify TLS with the operating system's trust store when available
+    import truststore
+
+    truststore.inject_into_ssl()
+except ImportError:  # pragma: no cover - falls back to Python's bundled CAs
+    pass
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_RAW_DIR = REPO_ROOT / "cache" / "raw"
 USER_AGENT = "spaceapps-earth-analogue-finder/1.0 (+https://github.com)"

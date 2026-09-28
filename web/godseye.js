@@ -1,0 +1,451 @@
+/* God's Eye: fly down into one site and see its real terrain in 3D.
+ *
+ * Elevation and local terrain statistics come from /api/site3d (AWS Terrain
+ * Tiles, ~150 m). Imagery is Sentinel-2 cloudless (ESA Copernicus data via EOX)
+ * through /api/imagery. The sun can be set to any angle, including the Moon's
+ * polar sun, which never climbs more than ~1.5 degrees above the horizon. */
+
+import * as THREE from "three";
+import { OrbitControls } from "./vendor/three/OrbitControls.js";
+
+const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const DEG = Math.PI / 180;
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
+export const SUN_PRESETS = {
+  earth: { label: "Earth midday", elevation: 55, azimuth: 160, lunar: false },
+  evening: { label: "Low evening sun", elevation: 8, azimuth: 250, lunar: false },
+  lunar: { label: "Lunar polar sun", elevation: 1.5, azimuth: 135, lunar: true },
+};
+
+function decode(field) {
+  const raw = atob(field.data);
+  const bytes = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+  return new Float32Array(bytes.buffer);
+}
+
+function niceLength(km) {
+  const steps = [0.5, 1, 2, 5, 10, 20, 50, 100];
+  return steps.reduce((best, s) => (s <= km ? s : best), steps[0]);
+}
+
+export class GodsEye {
+  constructor(root) {
+    this.root = root;
+    this.canvas = $("geCanvas");
+    this.open = false;
+    this.exaggeration = 2;
+    this.sun = { ...SUN_PRESETS.earth };
+    this.imagery = "s2";
+
+    this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+    this.scene = new THREE.Scene();
+    this.camera = new THREE.PerspectiveCamera(42, 1, 0.05, 2000);
+    this.controls = new OrbitControls(this.camera, this.canvas);
+    Object.assign(this.controls, { enableDamping: true, dampingFactor: 0.08, maxPolarAngle: 84 * DEG, screenSpacePanning: false });
+    this.controls.addEventListener("start", () => { this.flight = null; });
+
+    this.hemi = new THREE.HemisphereLight(0xbcd3f0, 0x3b3128, 0.55);
+    this.light = new THREE.DirectionalLight(0xffffff, 2.6);
+    this.light.castShadow = true;
+    this.light.shadow.mapSize.set(2048, 2048);
+    this.light.shadow.bias = -0.0005;
+    this.light.shadow.normalBias = 0.02;
+    this.scene.add(this.hemi, this.light, this.light.target);
+
+    this.stars = this._stars();
+    this.scene.add(this.stars);
+
+    new ResizeObserver(() => this._resize()).observe(root);
+    this._bindUi();
+    this.renderer.setAnimationLoop(() => this._tick());
+  }
+
+  _stars() {
+    let seed = 7;
+    const rand = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+    const pos = new Float32Array(1500 * 3);
+    for (let i = 0; i < 1500; i++) {
+      const u = rand() * 0.9 + 0.1;
+      const t = rand() * Math.PI * 2;
+      const s = Math.sqrt(1 - u * u);
+      pos.set([900 * s * Math.cos(t), 900 * u, 900 * s * Math.sin(t)], i * 3);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    return new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xdfe8f5, size: 1.6, sizeAttenuation: false }));
+  }
+
+  _bindUi() {
+    $("geClose").addEventListener("click", () => this.close());
+    $("geExag").addEventListener("input", (e) => {
+      this.exaggeration = Number(e.target.value);
+      $("geExagValue").textContent = `${this.exaggeration.toFixed(1)}×`;
+      this._applyHeights();
+    });
+    $("geSunElev").addEventListener("input", (e) => { this.sun.elevation = Number(e.target.value); this._applySun(true); });
+    $("geSunAz").addEventListener("input", (e) => { this.sun.azimuth = Number(e.target.value); this._applySun(true); });
+    this.root.querySelectorAll("[data-sun]").forEach((b) => b.addEventListener("click", () => {
+      this.sun = { ...SUN_PRESETS[b.dataset.sun] };
+      this._applySun(false);
+    }));
+    this.root.querySelectorAll("[data-imagery]").forEach((b) => b.addEventListener("click", () => {
+      this.imagery = b.dataset.imagery;
+      this._applyMaterial();
+    }));
+    $("geCell").addEventListener("change", (e) => { if (this.cellLine) this.cellLine.visible = e.target.checked; });
+    $("geReset").addEventListener("click", () => this._introFlight(false));
+  }
+
+  /* --------------------------------------------------------------- open */
+
+  async show(site, context) {
+    this.open = true;
+    this.root.hidden = false;
+    this.root.classList.add("entering");
+    requestAnimationFrame(() => this.root.classList.remove("entering"));
+    this.context = context;
+    $("geTitle").textContent = site.label?.text || "Selected site";
+    $("geSub").textContent = context.subtitle || "";
+    $("geBadges").innerHTML = context.badges || "";
+    $("geStats").innerHTML = "";
+    $("geStatus").textContent = "Loading terrain…";
+    $("geLoading").hidden = false;
+    this._resize();
+    try {
+      const qs = new URLSearchParams({ lat: site.lat, lon: site.lon });
+      if (context.targetId) qs.set("target_id", context.targetId);
+      const res = await fetch(`/api/site3d?${qs}`);
+      if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
+      const data = await res.json();
+      if (!this.open) return;
+      this.data = data;
+      this._build(data);
+      this._renderStats(data);
+      $("geCredit").innerHTML = `Terrain: ${esc(data.credits.elevation)} · Imagery: ${esc(data.credits.imagery)} (${esc(data.imagery.s2.licence)})`;
+      $("geLoading").hidden = true;
+      $("geStatus").textContent = "Loading satellite imagery…";
+      this._introFlight(true);
+      await this._loadImagery(data);
+    } catch (err) {
+      $("geStatus").textContent = `Could not load this site: ${err.message}`;
+    }
+  }
+
+  close() {
+    this.open = false;
+    this.root.hidden = true;
+    this.flight = null;
+    if (this.onClose) this.onClose();
+  }
+
+  /* -------------------------------------------------------------- build */
+
+  _build(data) {
+    for (const obj of [this.mesh, this.cellLine, this.pin]) {
+      if (!obj) continue;
+      this.scene.remove(obj);
+      obj.geometry.dispose();
+      obj.material.map?.dispose();
+      obj.material.dispose();
+    }
+    const [rows, cols] = data.heightmap.shape;
+    this.heights = decode(data.heightmap);
+    this.rows = rows;
+    this.cols = cols;
+    this.sizeKm = data.ground_size_m / 1000;
+    let lo = Infinity;
+    for (const h of this.heights) lo = Math.min(lo, h);
+    this.base = lo;
+
+    const geo = new THREE.PlaneGeometry(this.sizeKm, this.sizeKm, cols - 1, rows - 1);
+    this.mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ roughness: 0.96, metalness: 0 }));
+    this.mesh.castShadow = true;
+    this.mesh.receiveShadow = true;
+    this.scene.add(this.mesh);
+
+    this.imageCanvas = document.createElement("canvas");
+    this.imageCanvas.width = this.imageCanvas.height = data.imagery.s2.tiles * 256;
+    const ctx = this.imageCanvas.getContext("2d");
+    ctx.fillStyle = "#8d8577";
+    ctx.fillRect(0, 0, this.imageCanvas.width, this.imageCanvas.height);
+    this.imageTexture = new THREE.CanvasTexture(this.imageCanvas);
+    this.imageTexture.colorSpace = THREE.SRGBColorSpace;
+    this.imageTexture.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
+
+    this._applyHeights();
+    this._applyMaterial();
+    this._applySun(false);
+  }
+
+  /* Height (km, exaggerated) at fractional mosaic position (u east, v south). */
+  _heightAt(u, v) {
+    const x = Math.min(this.cols - 1, Math.max(0, u * (this.cols - 1)));
+    const y = Math.min(this.rows - 1, Math.max(0, v * (this.rows - 1)));
+    const x0 = Math.floor(x), y0 = Math.floor(y);
+    const x1 = Math.min(this.cols - 1, x0 + 1), y1 = Math.min(this.rows - 1, y0 + 1);
+    const fx = x - x0, fy = y - y0;
+    const h = (r, c) => this.heights[r * this.cols + c];
+    const top = h(y0, x0) * (1 - fx) + h(y0, x1) * fx;
+    const bot = h(y1, x0) * (1 - fx) + h(y1, x1) * fx;
+    return ((top * (1 - fy) + bot * fy) - this.base) / 1000 * this.exaggeration;
+  }
+
+  _toWorld(u, v, lift = 0) {
+    return new THREE.Vector3((u - 0.5) * this.sizeKm, this._heightAt(u, v) + lift, (v - 0.5) * this.sizeKm);
+  }
+
+  _applyHeights() {
+    if (!this.mesh) return;
+    const pos = this.mesh.geometry.attributes.position;
+    for (let r = 0; r < this.rows; r++) {
+      for (let c = 0; c < this.cols; c++) {
+        const i = r * this.cols + c;
+        // PlaneGeometry lies in XY with row 0 at +Y (north); map to X east, Y up, Z south.
+        pos.setXYZ(i, (c / (this.cols - 1) - 0.5) * this.sizeKm,
+          (this.heights[i] - this.base) / 1000 * this.exaggeration,
+          (r / (this.rows - 1) - 0.5) * this.sizeKm);
+      }
+    }
+    pos.needsUpdate = true;
+    this.mesh.geometry.computeVertexNormals();
+    this.mesh.geometry.computeBoundingSphere();
+    this._buildOverlays();
+  }
+
+  /* Dark side walls from the terrain edge down to a common floor, so the block reads as solid. */
+  _buildSkirt() {
+    if (this.skirt) {
+      this.scene.remove(this.skirt);
+      this.skirt.geometry.dispose();
+      this.skirt.material.dispose();
+    }
+    const floor = -Math.max(0.6, this.sizeKm * 0.012) * this.exaggeration;
+    const pos = [];
+    const wall = (points) => {
+      for (let i = 0; i < points.length - 1; i++) {
+        const [a, b] = [points[i], points[i + 1]];
+        pos.push(a.x, a.y, a.z, b.x, b.y, b.z, b.x, floor, b.z);
+        pos.push(a.x, a.y, a.z, b.x, floor, b.z, a.x, floor, a.z);
+      }
+    };
+    const n = 64;
+    const line = (f) => Array.from({ length: n + 1 }, (_, i) => f(i / n));
+    wall(line((t) => this._toWorld(t, 0)));
+    wall(line((t) => this._toWorld(1, t)));
+    wall(line((t) => this._toWorld(1 - t, 1)));
+    wall(line((t) => this._toWorld(0, 1 - t)));
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    geo.computeVertexNormals();
+    this.skirt = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0x241c16, roughness: 1, side: THREE.DoubleSide }));
+    this.scene.add(this.skirt);
+  }
+
+  _buildOverlays() {
+    this._buildSkirt();
+    for (const obj of [this.cellLine, this.pin]) {
+      if (!obj) continue;
+      this.scene.remove(obj);
+      obj.geometry.dispose();
+      obj.material.dispose();
+    }
+    const { nw, se } = this.data.cell;
+    const pts = [];
+    const edge = (u0, v0, u1, v1) => {
+      for (let i = 0; i <= 60; i++) {
+        const t = i / 60;
+        pts.push(this._toWorld(u0 + (u1 - u0) * t, v0 + (v1 - v0) * t, 0.03 * this.exaggeration + 0.02));
+      }
+    };
+    edge(nw[0], nw[1], se[0], nw[1]);
+    edge(se[0], nw[1], se[0], se[1]);
+    edge(se[0], se[1], nw[0], se[1]);
+    edge(nw[0], se[1], nw[0], nw[1]);
+    this.cellLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),
+      new THREE.LineBasicMaterial({ color: 0xffb27d, transparent: true, opacity: 0.95, depthTest: true }));
+    this.cellLine.visible = $("geCell").checked;
+    this.scene.add(this.cellLine);
+
+    const [su, sv] = this.data.site;
+    const ground = this._toWorld(su, sv);
+    const tall = this.sizeKm * 0.06;
+    const geo = new THREE.CylinderGeometry(0.0, this.sizeKm * 0.004, tall, 12);
+    geo.translate(0, tall / 2, 0);
+    this.pin = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0xf08a4b }));
+    this.pin.rotation.x = Math.PI;
+    this.pin.position.copy(ground).add(new THREE.Vector3(0, tall, 0));
+    this.scene.add(this.pin);
+  }
+
+  _applyMaterial() {
+    if (!this.mesh) return;
+    this.root.querySelectorAll("[data-imagery]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.imagery === this.imagery)));
+    const mat = this.mesh.material;
+    if (this.imagery === "s2") {
+      mat.map = this.imageTexture;
+      mat.color.set(0xffffff);
+    } else {
+      mat.map = null;
+      mat.color.set(0xb9b3a8);
+    }
+    mat.needsUpdate = true;
+  }
+
+  _applySun(fromSlider) {
+    const { elevation, azimuth } = this.sun;
+    if (!fromSlider) {
+      $("geSunElev").value = elevation;
+      $("geSunAz").value = azimuth;
+    }
+    $("geSunElevValue").textContent = `${Number(elevation).toFixed(1)}°`;
+    $("geSunAzValue").textContent = `${Math.round(azimuth)}°`;
+    this.root.querySelectorAll("[data-sun]").forEach((b) => {
+      const p = SUN_PRESETS[b.dataset.sun];
+      b.setAttribute("aria-pressed", String(p.elevation === Number(elevation) && p.azimuth === Number(azimuth)));
+    });
+    const lunar = !!this.sun.lunar && Number(elevation) === SUN_PRESETS.lunar.elevation;
+    this.root.classList.toggle("lunar-sky", lunar);
+    $("geSunNote").textContent = lunar
+      ? "Lunar polar sun: the Moon's spin axis is tilted only ~1.5° to the ecliptic, so at the poles the Sun circles within about 1.5° of the horizon. No air scatters the light, so shadows are black."
+      : "Drag the sliders to move the Sun. Long, low shadows show relief that a rover or lander would face.";
+    const d = (this.sizeKm || 100) * 1.2;
+    const el = Math.max(0.3, Number(elevation)) * DEG;
+    const az = Number(azimuth) * DEG;   // clockwise from north; north is -Z
+    this.light.position.set(Math.sin(az) * Math.cos(el) * d, Math.sin(el) * d, -Math.cos(az) * Math.cos(el) * d);
+    this.light.target.position.set(0, 0, 0);
+    const half = (this.sizeKm || 100) * 0.75;
+    Object.assign(this.light.shadow.camera, { left: -half, right: half, top: half, bottom: -half, near: 0.1, far: d * 3 });
+    this.light.shadow.camera.updateProjectionMatrix();
+    // Moon: no atmosphere, so no sky light and a black sky.
+    this.hemi.intensity = lunar ? 0.02 : 0.55;
+    this.light.intensity = lunar ? 3.4 : 2.6;
+    this.light.color.set(lunar ? 0xffffff : Number(elevation) < 12 ? 0xffd2a6 : 0xfff6ea);
+    this.scene.background = new THREE.Color(lunar ? 0x000000 : 0x0d1522);
+    this.scene.fog = lunar ? null : new THREE.Fog(0x0d1522, (this.sizeKm || 100) * 1.4, (this.sizeKm || 100) * 4);
+    this.stars.visible = lunar || Number(elevation) < 3;
+  }
+
+  async _loadImagery(data) {
+    const s2 = data.imagery.s2;
+    const ctx = this.imageCanvas.getContext("2d");
+    let loaded = 0;
+    let failed = 0;
+    const jobs = [];
+    for (let j = 0; j < s2.tiles; j++) {
+      for (let i = 0; i < s2.tiles; i++) {
+        jobs.push(new Promise((resolve) => {
+          const img = new Image();
+          img.onload = () => {
+            ctx.drawImage(img, i * 256, j * 256);
+            loaded++;
+            this.imageTexture.needsUpdate = true;
+            resolve();
+          };
+          img.onerror = () => { failed++; resolve(); };
+          img.src = `/api/imagery/s2/${s2.zoom}/${s2.x0 + i}/${s2.y0 + j}.jpg`;
+        }));
+      }
+    }
+    await Promise.all(jobs);
+    if (!loaded && this.open) {
+      this.imagery = "relief";
+      this._applyMaterial();
+      $("geStatus").textContent = "Satellite imagery is not cached for this site (offline), so the terrain is shown as shaded relief.";
+    } else {
+      $("geStatus").textContent = failed ? `${failed} imagery tiles missing (offline cache).` : "";
+    }
+  }
+
+  _renderStats(data) {
+    const c = data.stats.cell || data.stats.area;
+    const pct = (x) => `${Math.round(x * 100)}%`;
+    const t = data.target_slope;
+    let compare = "";
+    if (t && t.measured_value !== null && t.measured_value !== undefined) {
+      compare = `<p class="ge-compare">${esc(this.context.targetName)} measured <b>${Number(t.measured_value).toFixed(1)}°</b>
+        at ${esc(t.baseline || "a finer scale")}. Slopes measured over shorter distances read steeper, so compare
+        with care: this cell is <b>${c.slope_mean.toFixed(1)}°</b> on average at ${data.stats.slope_baseline_m} m.</p>`;
+    }
+    $("geStats").innerHTML = `
+      <div class="ge-stat"><span>Elevation</span><b class="num">${Math.round(c.elevation_min)}–${Math.round(c.elevation_max)} m</b></div>
+      <div class="ge-stat"><span>Relief in the cell</span><b class="num">${Math.round(c.relief)} m</b></div>
+      <div class="ge-stat"><span>Mean slope</span><b class="num">${c.slope_mean.toFixed(1)}°</b></div>
+      <div class="ge-stat"><span>90% of ground below</span><b class="num">${c.slope_p90.toFixed(1)}°</b></div>
+      <div class="ge-stat wide"><span>Rover-trafficable (under ${data.stats.trafficable_deg}°)</span>
+        <b class="num">${pct(c.share_under_15)}</b>
+        <div class="bar" role="img" aria-label="${pct(c.share_under_15)} trafficable"><i style="width:${(c.share_under_15 * 100).toFixed(1)}%"></i></div></div>
+      <p class="hint">Measured on ${data.stats.slope_baseline_m} m elevation pixels inside the scored 0.5° cell (orange outline).</p>
+      ${compare}`;
+  }
+
+  /* ------------------------------------------------------------ camera */
+
+  _introFlight(fromAbove) {
+    const s = this.sizeKm;
+    const [su, sv] = this.data.site;
+    const focus = this._toWorld(su, sv);
+    this.controls.target.copy(focus);
+    this.controls.minDistance = s * 0.04;
+    this.controls.maxDistance = s * 2.2;
+    const end = new THREE.Vector3(s * 0.55, s * 0.62, s * 0.85);   // whole block in view
+    if (REDUCED || !fromAbove) {
+      this.camera.position.copy(end);
+      this.flight = null;
+      return;
+    }
+    const start = focus.clone().add(new THREE.Vector3(0.01, s * 2.0, 0.01));
+    this.camera.position.copy(start);
+    this.flight = { start, end, t0: performance.now(), dur: 2200 };
+  }
+
+  _resize() {
+    const w = this.root.clientWidth;
+    const h = this.root.clientHeight;
+    if (!w || !h) return;
+    this.renderer.setSize(w, h, false);
+    this.camera.aspect = w / h;
+    this.camera.updateProjectionMatrix();
+  }
+
+  _tick() {
+    if (!this.open) return;
+    if (this.flight) {
+      const f = this.flight;
+      const t = Math.min(1, (performance.now() - f.t0) / f.dur);
+      const e = 1 - Math.pow(1 - t, 3);
+      this.camera.position.lerpVectors(f.start, f.end, e);
+      if (t >= 1) this.flight = null;
+    }
+    this.controls.update();
+    this.renderer.render(this.scene, this.camera);
+    this._hud();
+  }
+
+  _hud() {
+    if (!this.mesh) return;
+    // Compass: north is -Z in world space.
+    const dir = new THREE.Vector3().subVectors(this.controls.target, this.camera.position);
+    const heading = Math.atan2(dir.x, -dir.z) / DEG;
+    $("geNorth").style.transform = `rotate(${-heading}deg)`;
+    // Scale bar at the focus point.
+    const p0 = this.controls.target.clone();
+    const right = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0, 1, 0)).normalize();
+    const p1 = p0.clone().add(right);   // 1 km across the screen at the focus
+    const a = p0.clone().project(this.camera);
+    const b = p1.clone().project(this.camera);
+    const w = this.root.clientWidth;
+    const pxPerKm = Math.hypot((b.x - a.x) * w / 2, (b.y - a.y) * this.root.clientHeight / 2);
+    if (!Number.isFinite(pxPerKm) || pxPerKm <= 0) return;
+    const km = niceLength(140 / pxPerKm);
+    $("geScaleBar").style.width = `${Math.round(km * pxPerKm)}px`;
+    $("geScaleLabel").textContent = km < 1 ? `${km * 1000} m` : `${km} km`;
+  }
+}
