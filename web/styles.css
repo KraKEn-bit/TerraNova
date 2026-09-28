@@ -755,3 +755,18 @@ body.hide-left .panel-left, body.hide-right .panel-right { display: none; }
 }
 
 .shortfall { color: var(--accent-strong); }
+
+/* ---------------------------------------------- God's Eye true elevation */
+.ge-elev-legend .ramp { background: linear-gradient(90deg, #e2f0e8 0%, #84bea2 30%, #2c7456 60%, #123524 100%); }
+.ge-elev-legend .scale span:nth-child(1) { left: 0; transform: none; }
+.ge-elev-legend .scale span:nth-child(2) { left: 100%; transform: translateX(-100%); }
+.ge-vscale {
+  align-self: flex-end; padding: 4px 8px; border-radius: 6px; font-size: 11px;
+  background: rgba(8,12,18,.8); border: 1px solid var(--line-2); color: var(--ink-2);
+}
+.ge-vscale.warn { border-color: var(--accent); color: var(--accent-strong); }
+.ge-hover {
+  position: absolute; z-index: 3; pointer-events: none; padding: 5px 9px; border-radius: 6px;
+  background: rgba(6,9,15,.92); border: 1px solid var(--line-2); font-size: 12px; display: grid; gap: 1px;
+}
+.ge-hover span { color: var(--ink-3); font-size: 11px; }

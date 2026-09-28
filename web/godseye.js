@@ -40,6 +40,24 @@ function slopeColour(deg) {
   return SLOPE_STOPS[SLOPE_STOPS.length - 1][1].map((v) => v / 255);
 }
 
+/* Elevation colours: pale mint (low) to dark phthalo green (high), as on the main map. */
+const ELEV_STOPS = [[0, [226, 240, 232]], [0.3, [132, 190, 162]], [0.6, [44, 116, 86]], [1, [18, 53, 36]]];
+function elevColour(t) {
+  for (let i = 1; i < ELEV_STOPS.length; i++) {
+    const [t1, c1] = ELEV_STOPS[i];
+    const [t0, c0] = ELEV_STOPS[i - 1];
+    if (t <= t1) {
+      const f = (t - t0) / (t1 - t0);
+      return c0.map((v, k) => (v + (c1[k] - v) * f) / 255);
+    }
+  }
+  return ELEV_STOPS[ELEV_STOPS.length - 1][1].map((v) => v / 255);
+}
+
+function exagLabel(x) {
+  return x === 1 ? "1× true scale" : `${x.toFixed(1)}× exaggerated`;
+}
+
 function niceStep(x) {
   const steps = [5, 10, 20, 25, 50, 100, 200, 250, 500, 1000];
   return steps.find((s) => s >= x) || 1000;
@@ -55,7 +73,7 @@ export class GodsEye {
     this.root = root;
     this.canvas = $("geCanvas");
     this.open = false;
-    this.exaggeration = 2;
+    this.exaggeration = 1;   // true vertical scale unless the user asks for more
     this.sun = { ...SUN_PRESETS.earth };
     this.imagery = "s2";
 
@@ -117,7 +135,7 @@ export class GodsEye {
     $("geClose").addEventListener("click", () => this.close());
     $("geExag").addEventListener("input", (e) => {
       this.exaggeration = Number(e.target.value);
-      $("geExagValue").textContent = `${this.exaggeration.toFixed(1)}×`;
+      this._showExaggeration();
       this._applyHeights();
     });
     $("geSunElev").addEventListener("input", (e) => { this.sun.elevation = Number(e.target.value); this._applySun(true); });
@@ -138,6 +156,12 @@ export class GodsEye {
       $("geSunPlay").setAttribute("aria-pressed", String(this.sunPlaying));
       $("geSunPlay").textContent = this.sunPlaying ? "❚❚ Pause sun" : "▶ Play sun";
     });
+    let hoverFrame = 0;
+    this.canvas.addEventListener("pointermove", (e) => {
+      if (e.buttons || hoverFrame) { if (e.buttons) $("geHover").hidden = true; return; }
+      hoverFrame = requestAnimationFrame(() => { hoverFrame = 0; this._hover(e); });
+    });
+    this.canvas.addEventListener("pointerleave", () => { $("geHover").hidden = true; });
     let down = null;
     this.canvas.addEventListener("pointerdown", (e) => { down = { x: e.clientX, y: e.clientY }; });
     this.canvas.addEventListener("pointerup", (e) => {
@@ -146,6 +170,32 @@ export class GodsEye {
       this._click(e);
     });
     $("geReset").addEventListener("click", () => this.resetAll());
+  }
+
+  _showExaggeration() {
+    $("geExagValue").textContent = exagLabel(this.exaggeration);
+    const badge = $("geVScale");
+    badge.textContent = this.exaggeration === 1 ? "Vertical: true scale" : `Heights ×${this.exaggeration.toFixed(1)} (exaggerated)`;
+    badge.classList.toggle("warn", this.exaggeration !== 1);
+  }
+
+  /* Live elevation under the cursor (true metres, whatever the exaggeration). */
+  _hover(e) {
+    const box = $("geHover");
+    if (!this.mesh) { box.hidden = true; return; }
+    const rect = this.canvas.getBoundingClientRect();
+    const ndc = new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
+    this.raycaster.setFromCamera(ndc, this.camera);
+    const hit = this.raycaster.intersectObject(this.mesh, false)[0];
+    if (!hit) { box.hidden = true; return; }
+    const u = hit.point.x / this.sizeKm + 0.5;
+    const v = hit.point.z / this.sizeKm + 0.5;
+    const { lat, lon } = this._uvToLatLon(u, v);
+    box.innerHTML = `<b class="num">${Math.round(this._elevationAt(u, v)).toLocaleString("en-US")} m</b>
+      <span>${Math.abs(lat).toFixed(3)}°${lat >= 0 ? "N" : "S"} ${Math.abs(lon).toFixed(3)}°${lon >= 0 ? "E" : "W"}</span>`;
+    box.hidden = false;
+    box.style.left = `${Math.min(rect.width - 170, e.clientX - rect.left + 14)}px`;
+    box.style.top = `${Math.max(8, e.clientY - rect.top - 34)}px`;
   }
 
   /* Back to how the view opened: camera, sun, surface, height, overlays and tools. */
@@ -162,9 +212,9 @@ export class GodsEye {
     $("geProbe").hidden = true;
     $("geToolHint").textContent = "Click the terrain to probe any point.";
 
-    this.exaggeration = 2;
-    $("geExag").value = 2;
-    $("geExagValue").textContent = "2.0×";
+    this.exaggeration = 1;
+    $("geExag").value = 1;
+    this._showExaggeration();
     $("geContours").checked = false;
     this.contour.uOn.value = 0;
     $("geCell").checked = true;
@@ -207,6 +257,7 @@ export class GodsEye {
       this.probeMarker.visible = false;
       $("geProbe").hidden = true;
       this._toggleProfileMode(false);
+      this._showExaggeration();
       this._build(data);
       this._renderStats(data);
       $("geCredit").innerHTML = `Terrain: ${esc(data.credits.elevation)} · Imagery: ${esc(data.credits.imagery)} (${esc(data.imagery.s2.licence)})`;
@@ -260,10 +311,23 @@ export class GodsEye {
         colours.set(slopeColour(deg), (r * cols + c) * 3);
       }
     }
-    geo.setAttribute("color", new THREE.BufferAttribute(colours, 3));
-    this.slopeSpacing = spacing;
+    this.slopeColours = colours;
     let hi = -Infinity;
     for (const h of this.heights) hi = Math.max(hi, h);
+    this.top = hi;
+    // Colour and label elevation with the full-resolution range of the block (the same
+    // numbers as the stats panel), not the smoothed display grid.
+    const eLo = data.stats.area.elevation_min;
+    const eHi = data.stats.area.elevation_max;
+    this.elevColours = new Float32Array(rows * cols * 3);
+    for (let i = 0; i < rows * cols; i++) {
+      const t = eHi > eLo ? (this.heights[i] - eLo) / (eHi - eLo) : 0;
+      this.elevColours.set(elevColour(Math.min(1, Math.max(0, t))), i * 3);
+    }
+    geo.setAttribute("color", new THREE.BufferAttribute(colours.slice(), 3));
+    this.slopeSpacing = spacing;
+    $("geElevLo").textContent = `${Math.round(eLo).toLocaleString("en-US")} m`;
+    $("geElevHi").textContent = `${Math.round(eHi).toLocaleString("en-US")} m`;
     const step = niceStep((hi - lo) / 14);
     this.contour.uInterval.value = step;
     this.contour.uBase.value = lo;
@@ -410,11 +474,17 @@ export class GodsEye {
     if (!this.mesh) return;
     this.root.querySelectorAll("[data-imagery]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.imagery === this.imagery)));
     const mat = this.mesh.material;
-    mat.vertexColors = this.imagery === "slope";
+    const coloured = this.imagery === "slope" || this.imagery === "elevation";
+    mat.vertexColors = coloured;
+    if (coloured) {
+      const attr = this.mesh.geometry.attributes.color;
+      attr.array.set(this.imagery === "slope" ? this.slopeColours : this.elevColours);
+      attr.needsUpdate = true;
+    }
     if (this.imagery === "s2") {
       mat.map = this.imageTexture;
       mat.color.set(0xffffff);
-    } else if (this.imagery === "slope") {
+    } else if (coloured) {
       mat.map = null;
       mat.color.set(0xffffff);
     } else {
@@ -422,6 +492,7 @@ export class GodsEye {
       mat.color.set(0xb9b3a8);
     }
     $("geSlopeLegend").hidden = this.imagery !== "slope";
+    $("geElevLegend").hidden = this.imagery !== "elevation";
     // Light contour ink over imagery, dark ink over the pale relief and slope surfaces.
     if (this.imagery === "s2") this.contour.uInk.value.setRGB(1.0, 0.93, 0.8);
     else this.contour.uInk.value.setRGB(0.28, 0.13, 0.05);
@@ -505,10 +576,12 @@ export class GodsEye {
         with care: this cell is <b>${c.slope_mean.toFixed(1)}°</b> on average at ${data.stats.slope_baseline_m} m.</p>`;
     }
     $("geStats").innerHTML = `
-      <div class="ge-stat"><span>Elevation</span><b class="num">${Math.round(c.elevation_min)}–${Math.round(c.elevation_max)} m</b></div>
+      <div class="ge-stat"><span>Elevation in the cell</span><b class="num">${Math.round(c.elevation_min).toLocaleString("en-US")}–${Math.round(c.elevation_max).toLocaleString("en-US")} m</b></div>
       <div class="ge-stat"><span>Relief in the cell</span><b class="num">${Math.round(c.relief)} m</b></div>
       <div class="ge-stat"><span>Mean slope</span><b class="num">${c.slope_mean.toFixed(1)}°</b></div>
       <div class="ge-stat"><span>90% of ground below</span><b class="num">${c.slope_p90.toFixed(1)}°</b></div>
+      <div class="ge-stat wide"><span>Whole block (${Math.round(data.ground_size_m / 1000)} km across)</span>
+        <b class="num">${Math.round(data.stats.area.elevation_min).toLocaleString("en-US")}–${Math.round(data.stats.area.elevation_max).toLocaleString("en-US")} m</b></div>
       <div class="ge-stat wide"><span>Rover-trafficable (under ${data.stats.trafficable_deg}°)</span>
         <b class="num">${pct(c.share_under_15)}</b>
         <div class="bar" role="img" aria-label="${pct(c.share_under_15)} trafficable"><i style="width:${(c.share_under_15 * 100).toFixed(1)}%"></i></div></div>

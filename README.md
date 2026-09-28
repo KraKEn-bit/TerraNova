@@ -73,7 +73,7 @@ in orange):
 * **Sun:** any elevation and direction, with presets. **Lunar pole** sets the Sun 1.5° above
   the horizon (the Moon's spin axis is tilted only ~1.5°), with a black sky and no sky light:
   roughly how a lunar-pole site would look, lit the Moon's way.
-* **Surface:** satellite, shaded relief, or **Slope** (coloured by steepness, with the 15°
+* **Surface:** satellite, shaded relief, **Elevation**, or **Slope** (coloured by steepness, with the 15°
   rover limit marked), plus optional **contour lines** at an automatic interval.
 * **Probe:** click the terrain for elevation, slope and coordinates at that point.
 * **Profile:** "Measure a profile", click two points, and get the elevation profile with
@@ -81,7 +81,13 @@ in orange):
   marker along the path.
 * **Play sun:** animates the Sun round the sky. Under the lunar preset it circles the
   horizon, as it does at the lunar pole.
-* **Controls:** height exaggeration, cell outline toggle, compass and live scale bar.
+* **True elevation:** the terrain opens at **true vertical scale (1×)**. A badge always shows
+  the vertical scale, and turns orange with "Heights ×N (exaggerated)" if you raise it.
+  Move the cursor over the terrain to read the real height in metres and the coordinates.
+  **Elevation** mode colours the ground by height, with a legend of the block's lowest and
+  highest points (the same full-resolution numbers as the stats panel).
+* **Controls:** optional height exaggeration (1–6×), cell outline toggle, compass, live
+  scale bar, and **Reset all**, which restores every option.
 
 What it cannot be: a live view. The imagery is a 2020 cloud-free composite, and there is no
 real-time imagery of the ground. Terrain tiles stop at about ±84° latitude, so Antarctic

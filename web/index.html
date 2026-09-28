@@ -227,14 +227,19 @@
       <button type="button" data-imagery="s2" aria-pressed="true">Satellite</button>
       <button type="button" data-imagery="relief" aria-pressed="false">Relief</button>
       <button type="button" data-imagery="slope" aria-pressed="false">Slope</button>
+      <button type="button" data-imagery="elevation" aria-pressed="false">Elevation</button>
+    </div>
+    <div class="ge-slope-legend ge-elev-legend" id="geElevLegend" hidden>
+      <div class="ramp"></div>
+      <div class="scale num"><span id="geElevLo"></span><span id="geElevHi"></span></div>
     </div>
     <div class="ge-slope-legend" id="geSlopeLegend" hidden>
       <div class="ramp"></div>
       <div class="scale num"><span>0°</span><span>5°</span><span>15° rover limit</span><span>30°+</span></div>
     </div>
     <label class="toggle ge-toggle"><input type="checkbox" id="geContours"><span>Contour lines <small id="geContourStep"></small></span></label>
-    <label class="ge-slider">Height exaggeration <b id="geExagValue" class="num">2.0×</b>
-      <input type="range" id="geExag" min="1" max="6" step="0.5" value="2"></label>
+    <label class="ge-slider">Height exaggeration <b id="geExagValue" class="num">1× true scale</b>
+      <input type="range" id="geExag" min="1" max="6" step="0.5" value="1"></label>
     <label class="toggle ge-toggle"><input type="checkbox" id="geCell" checked><span>Outline the scored cell</span></label>
     <h3 class="eyebrow">Explore</h3>
     <div class="ge-tools">
@@ -249,7 +254,9 @@
   <div class="ge-hud">
     <div class="ge-north" aria-hidden="true"><svg id="geNorth" viewBox="0 0 20 20" width="22" height="22"><path d="M10 2 L15 16 L10 13 L5 16 Z" fill="#f08a4b"/><path d="M10 2 L10 13 L5 16 Z" fill="#ffb27d"/></svg><small>N</small></div>
     <div class="ge-scale"><div class="ge-scale-bar" id="geScaleBar"></div><span id="geScaleLabel" class="num"></span></div>
+    <div class="ge-vscale" id="geVScale">Vertical: true scale</div>
   </div>
+  <div class="ge-hover" id="geHover" hidden></div>
   <p class="ge-credit" id="geCredit"></p>
   <div class="loading ge-loading" id="geLoading"><div class="spinner" aria-hidden="true"></div><p>Descending…</p></div>
 </section>
