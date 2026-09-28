@@ -68,6 +68,7 @@
           role="combobox" aria-expanded="false" aria-controls="searchResults" aria-autocomplete="list">
         <ul class="search-results" id="searchResults" role="listbox" hidden></ul>
       </div>
+      <button class="ghost surprise" id="surprise" type="button" title="Fly to a random strong match you have not seen (R)" aria-label="Surprise me">🎲 <span>Surprise me</span></button>
       <div class="segmented" role="group" aria-label="View">
         <button type="button" data-view="globe" aria-pressed="true">Globe</button>
         <button type="button" data-view="map" aria-pressed="false">Map</button>
@@ -121,16 +122,37 @@
   <aside class="panel panel-right" aria-label="Results">
     <div class="tabs" role="tablist">
       <button role="tab" id="tabResults" aria-selected="true" aria-controls="results" type="button">Ranked sites</button>
+      <button role="tab" id="tabExplore" aria-selected="false" aria-controls="explore" type="button">Explore</button>
       <button role="tab" id="tabValidation" aria-selected="false" aria-controls="validation" type="button">Validation</button>
     </div>
 
     <section id="results" role="tabpanel" aria-labelledby="tabResults" tabindex="-1">
-      <div class="topk">
-        <label for="topK">Show top <b class="num" id="topKValue">20</b> sites</label>
-        <input type="range" id="topK" min="5" max="100" step="5" value="20" list="topKMarks">
-        <datalist id="topKMarks"><option value="5"></option><option value="20"></option><option value="50"></option><option value="100"></option></datalist>
-        <div class="topk-scale num" aria-hidden="true"><span>5</span><span>20</span><span>50</span><span>100</span></div>
-      </div>
+      <details class="discovery" open>
+        <summary>Discovery settings</summary>
+        <div class="topk">
+          <label for="topK">Show top <b class="num" id="topKValue">20</b> sites</label>
+          <input type="range" id="topK" min="5" max="100" step="5" value="20">
+        </div>
+        <label class="toggle disc-toggle"><input type="checkbox" id="newOnly" checked>
+          <span>New sites only <small>hide places within 500 km of a known analog</small></span></label>
+        <div class="topk">
+          <label for="spreadKm">Spread results: at least <b class="num" id="spreadValue">800 km</b> apart</label>
+          <input type="range" id="spreadKm" min="0" max="2000" step="100" value="800">
+        </div>
+        <div class="disc-row">
+          <label for="perCountry">Max per country</label>
+          <select id="perCountry">
+            <option value="0">no limit</option><option value="1">1</option>
+            <option value="2" selected>2</option><option value="3">3</option><option value="5">5</option>
+          </select>
+        </div>
+        <div class="topk">
+          <label for="tolerance">Permissible error <b class="num" id="toleranceValue">exact</b></label>
+          <input type="range" id="tolerance" min="0" max="3" step="0.25" value="0">
+          <small class="hint">Higher = a criterion counts as a full match anywhere within a band around the target,
+            sized from how confident the target value is.</small>
+        </div>
+      </details>
       <div class="results-head">
         <p class="hint" id="resultsSummary">Scoring…</p>
         <div class="export">
@@ -143,6 +165,7 @@
       <article class="detail" id="detail" hidden></article>
     </section>
 
+    <section id="explore" role="tabpanel" aria-labelledby="tabExplore" tabindex="-1" hidden></section>
     <section id="validation" role="tabpanel" aria-labelledby="tabValidation" tabindex="-1" hidden></section>
   </aside>
 </main>
@@ -196,13 +219,27 @@
       <input type="range" id="geSunAz" min="0" max="359" step="1" value="160"></label>
     <p class="hint" id="geSunNote"></p>
     <h3 class="eyebrow">View</h3>
-    <div class="segmented" role="group" aria-label="Surface">
+    <div class="segmented ge-presets" role="group" aria-label="Surface">
       <button type="button" data-imagery="s2" aria-pressed="true">Satellite</button>
-      <button type="button" data-imagery="relief" aria-pressed="false">Shaded relief</button>
+      <button type="button" data-imagery="relief" aria-pressed="false">Relief</button>
+      <button type="button" data-imagery="slope" aria-pressed="false">Slope</button>
     </div>
+    <div class="ge-slope-legend" id="geSlopeLegend" hidden>
+      <div class="ramp"></div>
+      <div class="scale num"><span>0°</span><span>5°</span><span>15° rover limit</span><span>30°+</span></div>
+    </div>
+    <label class="toggle ge-toggle"><input type="checkbox" id="geContours"><span>Contour lines <small id="geContourStep"></small></span></label>
     <label class="ge-slider">Height exaggeration <b id="geExagValue" class="num">2.0×</b>
       <input type="range" id="geExag" min="1" max="6" step="0.5" value="2"></label>
     <label class="toggle ge-toggle"><input type="checkbox" id="geCell" checked><span>Outline the scored cell</span></label>
+    <h3 class="eyebrow">Explore</h3>
+    <div class="ge-tools">
+      <button class="ghost small" type="button" id="geProfileBtn" aria-pressed="false">Measure a profile</button>
+      <button class="ghost small" type="button" id="geSunPlay" aria-pressed="false">▶ Play sun</button>
+    </div>
+    <p class="hint" id="geToolHint">Click the terrain to probe any point.</p>
+    <div id="geProbe" class="ge-probe" hidden></div>
+    <div id="geProfile" class="ge-profile" hidden></div>
     <p class="hint ge-status" id="geStatus" role="status"></p>
   </aside>
   <div class="ge-hud">
@@ -228,6 +265,7 @@
       <tr><td><kbd>+</kbd> <kbd>−</kbd> <kbd>0</kbd></td><td>Zoom in / out / reset</td></tr>
       <tr><td><kbd>V</kbd></td><td>Validation tab</td></tr>
       <tr><td><kbd>T</kbd></td><td>Start the guided tour</td></tr>
+      <tr><td><kbd>R</kbd></td><td>Surprise me: fly to a random strong match</td></tr>
       <tr><td><kbd>Esc</kbd></td><td>Close the 3D view, a dialog or the tour</td></tr>
     </table>
   </div>

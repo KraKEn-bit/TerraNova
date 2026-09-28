@@ -47,3 +47,13 @@ def test_stats_and_cell_mask():
     assert terrain.stats(dem, slope, mask).elevation_mean == 10.0
     with pytest.raises(ValueError):
         terrain.stats(dem, slope, np.zeros_like(mask))
+
+
+def test_hillshade_lights_slopes_facing_the_sun():
+    """Ground rising to the east faces west: an evening (western) sun lights it best."""
+    dem = np.tile(np.arange(16.0) * 10.0, (16, 1))
+    west = terrain.hillshade(dem, 30.0, azimuth=270.0, altitude=30.0)[8, 8]
+    east = terrain.hillshade(dem, 30.0, azimuth=90.0, altitude=30.0)[8, 8]
+    flat = terrain.hillshade(np.zeros((16, 16)), 30.0, altitude=30.0)[8, 8]
+    assert west > flat > east
+    assert flat == pytest.approx(math.sin(math.radians(30.0)))

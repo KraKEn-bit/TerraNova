@@ -73,6 +73,14 @@ in orange):
 * **Sun:** any elevation and direction, with presets. **Lunar pole** sets the Sun 1.5° above
   the horizon (the Moon's spin axis is tilted only ~1.5°), with a black sky and no sky light:
   roughly how a lunar-pole site would look, lit the Moon's way.
+* **Surface:** satellite, shaded relief, or **Slope** (coloured by steepness, with the 15°
+  rover limit marked), plus optional **contour lines** at an automatic interval.
+* **Probe:** click the terrain for elevation, slope and coordinates at that point.
+* **Profile:** "Measure a profile", click two points, and get the elevation profile with
+  climb, descent, the steepest grade and the share over 15°. Then **▶ Drive it** runs a rover
+  marker along the path.
+* **Play sun:** animates the Sun round the sky. Under the lunar preset it circles the
+  horizon, as it does at the lunar pole.
 * **Controls:** height exaggeration, cell outline toggle, compass and live scale bar.
 
 What it cannot be: a live view. The imagery is a 2020 cloud-free composite, and there is no
@@ -86,9 +94,51 @@ demo sites on the presenting laptop:
 python -m src.acquire.sitetiles --top 5     # every target's top 5 sites, ~40 MB
 ```
 
+### Discovery settings (right panel)
+
+The goal is new places, so by default the ranking shows **new sites only** (more than
+500 km from any catalogued analog), **spread out** (at least 800 km apart, at most 2 per
+country). All of this can be changed:
+
+* **New sites only**: hide places within 500 km of a known analog.
+* **Spread results**: minimum great-circle distance between results (0–2000 km).
+* **Max per country**: cap how many results come from one country.
+* **Permissible error**: turns each criterion's exact target into a band. A cell scores
+  100% on that criterion anywhere within `error × confidence noise × range` of the target;
+  the band is wider for low-confidence target values.
+
+Validation always runs on the full, unfiltered score map.
+
+### How sure are we? (robustness)
+
+* **Stability** (badge on every site, bar in the site card): the target values are
+  perturbed 48 times with noise sized by their stated confidence (high 3%, medium 8%,
+  low 15% of the range, fixed seed). A site's stability is the share of runs in which it
+  stays in the top 1% of land. Most top sites score 80–100%.
+* **Leave one criterion out** (Validation tab): each criterion is dropped in turn and the
+  whole Earth re-scored. Vegetation is the most important: without it, AUC falls to
+  0.62–0.88 for four of the five targets. With any other criterion dropped it stays at 1.00.
+* **Do the datasets agree?** (Validation tab): independent datasets are checked against each
+  other. MODIS vs NASA POWER surface swing gives ρ = 0.92, precipitation vs NDVI 0.82,
+  latitude vs seasonality 0.60, and roughness vs slope 0.52. A test fails if a data rebuild
+  ever breaks this agreement.
+
+### Seeing a place
+
+* **Hover preview in 3D:** hovering a site shows the Blue Marble thumbnail at once. It then
+  upgrades to a small **rotating 3D terrain block**: Sentinel-2 2020 imagery blended with a
+  hillshade computed from the elevation tiles, so ridges and gullies read in depth. Built
+  on demand and cached in `cache/peek/`; prefetch with `python -m src.acquire.peek`.
+* **Latest NASA view** (site card): NASA's newest daily image of the place (VIIRS on
+  NOAA-20 via GIBS, 375 m, labelled with its date). This is as close to "live" as open
+  satellite imagery gets. It may show clouds and needs internet.
+* **Explore tab:** a scatter plot of any two criteria showing the ranked sites (orange
+  dots), known analogs (diamonds) and the target (crosshair). Hover or click any point.
+
 ### Other tools
 
 * **Search** (`/`): towns, deserts, known analog sites, or typed coordinates (`-24.5, -69.25`).
+* **🎲 Surprise me** (`R`): fly to a random place in the top 2% that is not in your list.
 * **Pin to compare** (`P`): up to three sites side by side, criterion by criterion; the best
   value in each row is highlighted.
 * **Guided tour** (`T` or **▶ Tour**): an 8-step walkthrough that drives the app. Useful for
@@ -125,7 +175,7 @@ Shareable links open a specific state, which is useful for the demo video:
 ## Tests and lint
 
 ```bash
-python -m pytest tests -q                       # 61 tests, ~3 s, no network
+python -m pytest tests -q                       # 68 tests, ~3 s, no network
 python -m ruff check src tests scripts conftest.py
 OFFLINE=1 python -m scripts.check_controls      # validation table for every target
 ```
@@ -217,6 +267,9 @@ article. The list also has 8 densely vegetated reference points.
 | `GET` | `/api/site3d?lat=&lon=&target_id=` | God's Eye terrain: 256×256 heightmap, cell outline, relief and slope statistics |
 | `GET` | `/api/imagery/s2/{z}/{x}/{y}.jpg` | Sentinel-2 cloudless imagery tile for God's Eye (cached) |
 | `GET` | `/api/search?q=` | Places, regions, known analogs or `lat, lon` |
+| `POST` | `/api/robustness` | Monte Carlo stability of the ranked sites and leave-one-criterion-out sensitivity |
+| `GET` | `/api/datachecks` | Agreement between independent datasets (Spearman ρ) |
+| `GET` | `/api/peek?lat=&lon=` | Relief-shaded Sentinel-2 preview and a 64×64 heightmap for the 3D hover card |
 | `GET` | `/api/sources` | Every dataset, target citation, basemap credit and the LST gap-fill fit |
 
 ---
@@ -242,7 +295,9 @@ scratch downloads the Zenodo GeoTIFFs (~1 GB).
 | `src/acquire/` | Downloaders and the build: `landmask`, `power`, `gibs_ndvi`, `basemaps`, `build_predictor_stack`, `calibrate` |
 | `src/compute/similarity.py` | Scoring model: ranges, Earth envelope, weights, geometric mean, ranking |
 | `src/compute/validation.py` | ROC-AUC validation and the novelty label |
-| `src/compute/terrain.py` | God's Eye terrain maths: tile geometry, Terrarium decoding, slope and relief statistics |
+| `src/compute/terrain.py` | God's Eye terrain maths: tile geometry, Terrarium decoding, slope, relief and hillshade |
+| `src/compute/robustness.py` | Monte Carlo stability and leave-one-criterion-out sensitivity |
+| `src/compute/datachecks.py` | Cross-dataset consistency checks |
 | `src/compute/gazetteer.py` | Offline place names (82 region envelopes + Natural Earth places) |
 | `src/agents/rationale.py` | Rule-based explainer (not a language model); every claim carries a source |
 | `src/api/main.py` | FastAPI app |

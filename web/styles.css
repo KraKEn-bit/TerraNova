@@ -627,3 +627,80 @@ kbd {
 .target-card:hover .planet, .target-card:focus-visible .planet { animation: planet-spin 9s linear infinite; }
 @keyframes planet-spin { from { background-position: 30% 50%; } to { background-position: -170% 50%; } }
 @media (prefers-reduced-motion: reduce) { .target-card .planet { animation: none !important; } }
+
+/* ------------------------------------------------------ discovery + robust */
+.discovery { margin-bottom: 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel-2); }
+.discovery summary { cursor: pointer; padding: 9px 12px; font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+.discovery[open] summary { border-bottom: 1px solid var(--line); }
+.discovery .topk { border: 0; background: none; margin: 0; padding: 8px 12px 4px; }
+.discovery .hint { display: block; margin-top: 2px; font-size: 11px; }
+.disc-toggle { border: 0; background: none; padding: 8px 12px 2px; align-items: flex-start; }
+.disc-toggle small { display: block; color: var(--ink-3); font-size: 11px; }
+.disc-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 12px; font-size: 13px; color: var(--ink-2); }
+.disc-row select { background: var(--bg-2); color: var(--ink); border: 1px solid var(--line-2); border-radius: 5px; padding: 3px 6px; font: inherit; font-size: 12.5px; }
+.site .stable { font-size: 10.5px; color: var(--ink-3); }
+.robust { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius); }
+.robust .row { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 5px; }
+.robust small { display: block; color: var(--ink-3); font-size: 11px; margin-top: 5px; }
+.views { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.views figure { margin: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--bg-2); }
+.views img { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; }
+.views figcaption { font-size: 11px; color: var(--ink-2); padding: 5px 7px; line-height: 1.35; }
+.views figcaption small { color: var(--ink-3); }
+.views figure.missing img { display: none; }
+.views figure.missing figcaption::before { content: "Not available offline. "; color: var(--ink-3); }
+.peek3d { width: 100%; height: 100%; display: block; }
+.peek-badge { position: absolute; top: 6px; right: 6px; font-size: 10px; padding: 1px 6px; border-radius: 999px; background: rgba(0,0,0,.6); color: var(--ink-2); }
+
+/* ------------------------------------------------------------ explore tab */
+#explore { padding: 14px 16px 24px; outline: none; }
+.axes { display: flex; gap: 10px; margin: 8px 0; }
+.axes label { flex: 1; display: grid; gap: 3px; font-size: 11px; color: var(--ink-3); }
+.axes select { background: var(--bg-2); color: var(--ink); border: 1px solid var(--line-2); border-radius: 5px; padding: 4px 6px; font: inherit; font-size: 12px; }
+.scatter-wrap { position: relative; }
+.scatter { width: 100%; height: auto; display: block; background: var(--bg-2); border: 1px solid var(--line); border-radius: 8px; }
+.scatter text { font-size: 9.5px; fill: var(--ink-3); font-family: var(--font); }
+.scatter text.axis { font-size: 10.5px; fill: var(--ink-2); }
+.scatter text.tl { fill: #7cc4ff; font-size: 10px; }
+.scatter .g { stroke: var(--line); stroke-width: 1; }
+.scatter .t { stroke: #7cc4ff; stroke-width: 1; stroke-dasharray: 3 3; opacity: .7; }
+.scatter .target, .scatter-legend .target { fill: none; stroke: #7cc4ff; stroke-width: 2; }
+.scatter .site, .scatter-legend .site { fill: var(--accent); stroke: #1a0f08; stroke-width: 1.5; cursor: pointer; }
+.scatter .analog, .scatter-legend .analog { fill: var(--ink); stroke: #06090f; stroke-width: 1.5; cursor: pointer; }
+.scatter .site:hover, .scatter .analog:hover { stroke: #fff; stroke-width: 2; }
+.scatter-tip { position: absolute; z-index: 3; pointer-events: none; padding: 6px 9px; font-size: 11.5px; border-radius: 6px; background: rgba(6,9,15,.95); border: 1px solid var(--line-2); max-width: 180px; }
+.scatter-legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 11.5px; color: var(--ink-2); margin: 8px 0 4px; }
+.scatter-legend span { display: inline-flex; gap: 5px; align-items: center; }
+
+/* ------------------------------------------------------ God's Eye tools */
+.ge-slope-legend { margin: 6px 0 4px; }
+.ge-slope-legend .ramp { height: 8px; border-radius: 3px; background: linear-gradient(90deg, #f3e7d3 0%, #f0be8c 16.7%, #e8743b 50%, #7a1f0a 100%); }
+.ge-slope-legend .scale { position: relative; height: 14px; font-size: 10.5px; color: var(--ink-3); }
+.ge-slope-legend .scale span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+.ge-slope-legend .scale span:nth-child(1) { left: 0; transform: none; }
+.ge-slope-legend .scale span:nth-child(2) { left: 16.7%; }
+.ge-slope-legend .scale span:nth-child(3) { left: 50%; }
+.ge-slope-legend .scale span:nth-child(4) { left: 100%; transform: translateX(-100%); }
+.ge-toggle small { color: var(--ink-3); font-size: 11px; }
+.ge-tools { display: flex; gap: 6px; flex-wrap: wrap; }
+.ge-tools button[aria-pressed="true"] { border-color: #7cc4ff; color: #7cc4ff; }
+.ge-probe { margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: var(--panel-2); border: 1px solid rgba(124,196,255,.4); font-size: 12.5px; }
+.ge-probe small { color: var(--ink-3); }
+.ge-probe .ok { color: #7cc4ff; font-size: 11px; margin-left: 4px; }
+.ge-probe .warn { color: #ff9b7a; font-size: 11px; margin-left: 4px; }
+.ge-profile { margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: var(--panel-2); border: 1px solid var(--line); }
+.ge-profile-head { display: flex; justify-content: space-between; font-size: 12.5px; margin-bottom: 4px; }
+.ge-chart { width: 100%; height: auto; display: block; }
+.ge-chart .area { fill: rgba(124,196,255,.15); }
+.ge-chart .stroke { fill: none; stroke: #7cc4ff; stroke-width: 1.6; }
+.ge-chart .dot { fill: #ffb27d; stroke: #06090f; stroke-width: 1.2; }
+.ge-chart text { font-size: 9px; fill: var(--ink-3); }
+.ge-profile-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 10px; font-size: 11.5px; color: var(--ink-3); margin: 6px 0 8px; }
+.ge-profile-stats b { color: var(--ink); }
+
+.axes label { min-width: 0; }
+.axes select { width: 100%; min-width: 0; }
+
+.surprise { background: rgba(10,15,23,.88) !important; padding: 5px 10px !important; font-size: 13px; }
+.surprise:hover { border-color: var(--accent) !important; color: var(--ink) !important; }
+@media (max-width: 1280px) { .surprise span { display: none; } }

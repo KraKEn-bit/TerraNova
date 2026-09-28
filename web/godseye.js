@@ -26,6 +26,25 @@ function decode(field) {
   return new Float32Array(bytes.buffer);
 }
 
+/* Sequential ramp for slope: light at 0, orange at the 15 degree rover limit, dark red beyond. */
+const SLOPE_STOPS = [[0, [243, 231, 211]], [5, [240, 190, 140]], [15, [232, 116, 59]], [30, [122, 31, 10]]];
+function slopeColour(deg) {
+  for (let i = 1; i < SLOPE_STOPS.length; i++) {
+    const [d1, c1] = SLOPE_STOPS[i];
+    const [d0, c0] = SLOPE_STOPS[i - 1];
+    if (deg <= d1) {
+      const t = (deg - d0) / (d1 - d0);
+      return c0.map((v, k) => (v + (c1[k] - v) * t) / 255);
+    }
+  }
+  return SLOPE_STOPS[SLOPE_STOPS.length - 1][1].map((v) => v / 255);
+}
+
+function niceStep(x) {
+  const steps = [5, 10, 20, 25, 50, 100, 200, 250, 500, 1000];
+  return steps.find((s) => s >= x) || 1000;
+}
+
 function niceLength(km) {
   const steps = [0.5, 1, 2, 5, 10, 20, 50, 100];
   return steps.reduce((best, s) => (s <= km ? s : best), steps[0]);
@@ -62,6 +81,17 @@ export class GodsEye {
 
     this.stars = this._stars();
     this.scene.add(this.stars);
+
+    // Contour lines drawn in the terrain shader from each fragment's elevation.
+    this.contour = { uOn: { value: 0 }, uInterval: { value: 100 }, uBase: { value: 0 }, uExag: { value: 2 },
+      uInk: { value: new THREE.Color(1.0, 0.93, 0.8) } };
+    this.raycaster = new THREE.Raycaster();
+    this.probeMarker = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), new THREE.MeshBasicMaterial({ color: 0x7cc4ff }));
+    this.probeMarker.visible = false;
+    this.scene.add(this.probeMarker);
+    this.profilePoints = [];
+    this.profileMode = false;
+    this.sunPlaying = false;
 
     new ResizeObserver(() => this._resize()).observe(root);
     this._bindUi();
@@ -101,6 +131,20 @@ export class GodsEye {
       this._applyMaterial();
     }));
     $("geCell").addEventListener("change", (e) => { if (this.cellLine) this.cellLine.visible = e.target.checked; });
+    $("geContours").addEventListener("change", (e) => { this.contour.uOn.value = e.target.checked ? 1 : 0; });
+    $("geProfileBtn").addEventListener("click", () => this._toggleProfileMode());
+    $("geSunPlay").addEventListener("click", () => {
+      this.sunPlaying = !this.sunPlaying;
+      $("geSunPlay").setAttribute("aria-pressed", String(this.sunPlaying));
+      $("geSunPlay").textContent = this.sunPlaying ? "❚❚ Pause sun" : "▶ Play sun";
+    });
+    let down = null;
+    this.canvas.addEventListener("pointerdown", (e) => { down = { x: e.clientX, y: e.clientY }; });
+    this.canvas.addEventListener("pointerup", (e) => {
+      if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5) { down = null; return; }
+      down = null;
+      this._click(e);
+    });
     $("geReset").addEventListener("click", () => this._introFlight(false));
   }
 
@@ -127,6 +171,11 @@ export class GodsEye {
       const data = await res.json();
       if (!this.open) return;
       this.data = data;
+      this.profilePoints = [];
+      this._clearProfile();
+      this.probeMarker.visible = false;
+      $("geProbe").hidden = true;
+      this._toggleProfileMode(false);
       this._build(data);
       this._renderStats(data);
       $("geCredit").innerHTML = `Terrain: ${esc(data.credits.elevation)} · Imagery: ${esc(data.credits.imagery)} (${esc(data.imagery.s2.licence)})`;
@@ -166,7 +215,46 @@ export class GodsEye {
     this.base = lo;
 
     const geo = new THREE.PlaneGeometry(this.sizeKm, this.sizeKm, cols - 1, rows - 1);
-    this.mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ roughness: 0.96, metalness: 0 }));
+    // True slope at the display grid spacing (not exaggerated), for Slope mode and probes.
+    const spacing = (this.sizeKm * 1000) / (cols - 1);
+    this.slopes = new Float32Array(rows * cols);
+    const colours = new Float32Array(rows * cols * 3);
+    const H = (r, c) => this.heights[Math.min(rows - 1, Math.max(0, r)) * cols + Math.min(cols - 1, Math.max(0, c))];
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const gx = (H(r, c + 1) - H(r, c - 1)) / (2 * spacing);
+        const gy = (H(r + 1, c) - H(r - 1, c)) / (2 * spacing);
+        const deg = Math.atan(Math.hypot(gx, gy)) / DEG;
+        this.slopes[r * cols + c] = deg;
+        colours.set(slopeColour(deg), (r * cols + c) * 3);
+      }
+    }
+    geo.setAttribute("color", new THREE.BufferAttribute(colours, 3));
+    this.slopeSpacing = spacing;
+    let hi = -Infinity;
+    for (const h of this.heights) hi = Math.max(hi, h);
+    const step = niceStep((hi - lo) / 14);
+    this.contour.uInterval.value = step;
+    this.contour.uBase.value = lo;
+    $("geContourStep").textContent = `every ${step} m`;
+    const material = new THREE.MeshStandardMaterial({ roughness: 0.96, metalness: 0 });
+    material.onBeforeCompile = (shader) => {
+      Object.assign(shader.uniforms, this.contour);
+      shader.vertexShader = shader.vertexShader
+        .replace("#include <common>", "#include <common>\nvarying float vH;")
+        .replace("#include <begin_vertex>", "#include <begin_vertex>\nvH = position.y;");
+      shader.fragmentShader = shader.fragmentShader
+        .replace("#include <common>", "#include <common>\nvarying float vH;\nuniform float uOn, uInterval, uBase, uExag;\nuniform vec3 uInk;")
+        .replace("#include <dithering_fragment>", `#include <dithering_fragment>
+          if (uOn > 0.5) {
+            float c = (vH / uExag * 1000.0) / uInterval;
+            float w = fwidth(c);
+            float line = 1.0 - smoothstep(0.0, w * 1.3, abs(fract(c - 0.5) - 0.5));
+            float major = step(0.5, 1.0 - step(0.5, abs(mod(floor(c + 0.5), 5.0))));
+            gl_FragColor.rgb = mix(gl_FragColor.rgb, uInk, line * (0.55 + 0.4 * major));
+          }`);
+    };
+    this.mesh = new THREE.Mesh(geo, material);
     this.mesh.castShadow = true;
     this.mesh.receiveShadow = true;
     this.scene.add(this.mesh);
@@ -204,6 +292,7 @@ export class GodsEye {
 
   _applyHeights() {
     if (!this.mesh) return;
+    this.contour.uExag.value = this.exaggeration;
     const pos = this.mesh.geometry.attributes.position;
     for (let r = 0; r < this.rows; r++) {
       for (let c = 0; c < this.cols; c++) {
@@ -251,6 +340,7 @@ export class GodsEye {
 
   _buildOverlays() {
     this._buildSkirt();
+    if (this.profilePoints.length === 2) this._drawProfile();
     for (const obj of [this.cellLine, this.pin]) {
       if (!obj) continue;
       this.scene.remove(obj);
@@ -289,13 +379,21 @@ export class GodsEye {
     if (!this.mesh) return;
     this.root.querySelectorAll("[data-imagery]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.imagery === this.imagery)));
     const mat = this.mesh.material;
+    mat.vertexColors = this.imagery === "slope";
     if (this.imagery === "s2") {
       mat.map = this.imageTexture;
+      mat.color.set(0xffffff);
+    } else if (this.imagery === "slope") {
+      mat.map = null;
       mat.color.set(0xffffff);
     } else {
       mat.map = null;
       mat.color.set(0xb9b3a8);
     }
+    $("geSlopeLegend").hidden = this.imagery !== "slope";
+    // Light contour ink over imagery, dark ink over the pale relief and slope surfaces.
+    if (this.imagery === "s2") this.contour.uInk.value.setRGB(1.0, 0.93, 0.8);
+    else this.contour.uInk.value.setRGB(0.28, 0.13, 0.05);
     mat.needsUpdate = true;
   }
 
@@ -386,6 +484,163 @@ export class GodsEye {
       ${compare}`;
   }
 
+  /* --------------------------------------------------- probe + profile */
+
+  _uvToLatLon(u, v) {
+    const b = this.data.bounds;
+    const merc = (lat) => Math.log(Math.tan(Math.PI / 4 + (lat * DEG) / 2));
+    const y = merc(b.north) + (merc(b.south) - merc(b.north)) * v;
+    return { lat: (2 * Math.atan(Math.exp(y)) - Math.PI / 2) / DEG, lon: b.west + (b.east - b.west) * u };
+  }
+
+  _elevationAt(u, v) {
+    return this._heightAt(u, v) / this.exaggeration * 1000 + this.base;
+  }
+
+  _slopeAt(u, v) {
+    const c = Math.round(Math.min(1, Math.max(0, u)) * (this.cols - 1));
+    const r = Math.round(Math.min(1, Math.max(0, v)) * (this.rows - 1));
+    return this.slopes[r * this.cols + c];
+  }
+
+  _click(e) {
+    if (!this.mesh) return;
+    const rect = this.canvas.getBoundingClientRect();
+    const ndc = new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
+    this.raycaster.setFromCamera(ndc, this.camera);
+    const hit = this.raycaster.intersectObject(this.mesh, false)[0];
+    if (!hit) return;
+    const u = hit.point.x / this.sizeKm + 0.5;
+    const v = hit.point.z / this.sizeKm + 0.5;
+    if (this.profileMode) {
+      this.profilePoints.push([u, v]);
+      if (this.profilePoints.length === 1) $("geToolHint").textContent = "Now click the end point.";
+      if (this.profilePoints.length === 2) {
+        this._drawProfile();
+        this._toggleProfileMode(false);
+      }
+      this._probe(u, v, hit.point);
+      return;
+    }
+    this._probe(u, v, hit.point);
+  }
+
+  _probe(u, v, point) {
+    const { lat, lon } = this._uvToLatLon(u, v);
+    const slope = this._slopeAt(u, v);
+    this.probeMarker.position.copy(point);
+    this.probeMarker.scale.setScalar(this.sizeKm * 0.004);
+    this.probeMarker.visible = true;
+    const box = $("geProbe");
+    box.hidden = false;
+    box.innerHTML = `<b>${Math.round(this._elevationAt(u, v))} m</b> elevation · <b>${slope.toFixed(1)}°</b> slope
+      <span class="${slope >= 15 ? "warn" : "ok"}">${slope >= 15 ? "too steep for a rover" : "drivable"}</span><br>
+      <small>${Math.abs(lat).toFixed(3)}°${lat >= 0 ? "N" : "S"}, ${Math.abs(lon).toFixed(3)}°${lon >= 0 ? "E" : "W"} ·
+      slope over ${Math.round(this.slopeSpacing)} m</small>`;
+  }
+
+  _toggleProfileMode(force) {
+    this.profileMode = force ?? !this.profileMode;
+    $("geProfileBtn").setAttribute("aria-pressed", String(this.profileMode));
+    if (this.profileMode) {
+      this.profilePoints = [];
+      this._clearProfile();
+      $("geToolHint").textContent = "Click the start point on the terrain.";
+    } else if (this.profilePoints.length < 2) {
+      $("geToolHint").textContent = "Click the terrain to probe any point.";
+    } else {
+      $("geToolHint").textContent = "Profile drawn. Measure again, or drive it.";
+    }
+  }
+
+  _clearProfile() {
+    for (const obj of [this.profileLine, this.rover]) {
+      if (!obj) continue;
+      this.scene.remove(obj);
+      obj.geometry.dispose();
+      obj.material.dispose();
+    }
+    this.profileLine = this.rover = null;
+    this.drive = null;
+    $("geProfile").hidden = true;
+  }
+
+  _drawProfile() {
+    const [[u0, v0], [u1, v1]] = this.profilePoints;
+    const n = 200;
+    const pts = [];
+    const samples = [];
+    const groundKm = Math.hypot(u1 - u0, v1 - v0) * this.sizeKm;
+    for (let i = 0; i <= n; i++) {
+      const t = i / n;
+      const u = u0 + (u1 - u0) * t;
+      const v = v0 + (v1 - v0) * t;
+      pts.push(this._toWorld(u, v, 0.05 * this.exaggeration + 0.03));
+      samples.push({ d: groundKm * t, e: this._elevationAt(u, v), u, v });
+    }
+    for (const obj of [this.profileLine]) if (obj) { this.scene.remove(obj); obj.geometry.dispose(); obj.material.dispose(); }
+    this.profileLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0x7cc4ff }));
+    this.scene.add(this.profileLine);
+    this.profilePath = pts;
+    this.profileSamples = samples;
+
+    let maxGrade = 0, steep = 0, climb = 0, descent = 0;
+    for (let i = 1; i < samples.length; i++) {
+      const dz = samples[i].e - samples[i - 1].e;
+      const dx = (samples[i].d - samples[i - 1].d) * 1000;
+      const grade = Math.atan2(Math.abs(dz), dx) / DEG;
+      maxGrade = Math.max(maxGrade, grade);
+      if (grade >= 15) steep += dx;
+      if (dz > 0) climb += dz; else descent -= dz;
+    }
+    const es = samples.map((p) => p.e);
+    const lo = Math.min(...es), hi = Math.max(...es);
+    const W = 268, Hh = 96, pad = 4;
+    const x = (d) => pad + (d / (groundKm || 1)) * (W - 2 * pad);
+    const y = (e) => Hh - pad - ((e - lo) / (hi - lo || 1)) * (Hh - 2 * pad - 10);
+    const line = samples.map((p, i) => `${i ? "L" : "M"}${x(p.d).toFixed(1)},${y(p.e).toFixed(1)}`).join("");
+    const box = $("geProfile");
+    box.hidden = false;
+    box.innerHTML = `
+      <div class="ge-profile-head"><b>Elevation profile</b><span class="num">${groundKm.toFixed(1)} km</span></div>
+      <svg viewBox="0 0 ${W} ${Hh}" class="ge-chart" role="img" aria-label="Elevation profile from ${Math.round(es[0])} to ${Math.round(es[es.length - 1])} metres">
+        <path d="${line}L${x(groundKm)},${Hh}L${x(0)},${Hh}Z" class="area"/><path d="${line}" class="stroke"/>
+        <circle id="geRoverDot" r="3.5" cx="${x(0)}" cy="${y(es[0])}" class="dot"/>
+        <text x="${pad}" y="10">${Math.round(hi)} m</text><text x="${pad}" y="${Hh - 6}">${Math.round(lo)} m</text>
+      </svg>
+      <div class="ge-profile-stats">
+        <span>Climb <b class="num">${Math.round(climb)} m</b></span><span>Descent <b class="num">${Math.round(descent)} m</b></span>
+        <span>Steepest <b class="num">${maxGrade.toFixed(1)}°</b></span>
+        <span>Over 15° <b class="num">${groundKm ? Math.round((steep / 1000 / groundKm) * 100) : 0}%</b></span>
+      </div>
+      <button class="primary small" type="button" id="geDrive">▶ Drive it</button>
+      <small class="hint">Sampled from the ~${Math.round(this.slopeSpacing)} m display grid.</small>`;
+    this.chart = { x, y };
+    $("geDrive").addEventListener("click", () => this._startDrive());
+  }
+
+  _startDrive() {
+    if (!this.profilePath) return;
+    if (!this.rover) {
+      this.rover = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), new THREE.MeshBasicMaterial({ color: 0xffb27d }));
+      this.scene.add(this.rover);
+    }
+    this.rover.scale.setScalar(this.sizeKm * 0.006);
+    this.drive = { t0: performance.now(), dur: REDUCED ? 1 : 7000 };
+  }
+
+  _driveStep() {
+    const t = Math.min(1, (performance.now() - this.drive.t0) / this.drive.dur);
+    const f = t * (this.profilePath.length - 1);
+    const i = Math.min(this.profilePath.length - 2, Math.floor(f));
+    const p = this.profilePath[i].clone().lerp(this.profilePath[i + 1], f - i);
+    this.rover.position.copy(p).add(new THREE.Vector3(0, this.sizeKm * 0.006, 0));
+    const s = this.profileSamples[Math.round(f)];
+    const dot = $("geRoverDot");
+    if (dot && s) { dot.setAttribute("cx", this.chart.x(s.d)); dot.setAttribute("cy", this.chart.y(s.e)); }
+    if (t >= 1) this.drive = null;
+  }
+
   /* ------------------------------------------------------------ camera */
 
   _introFlight(fromAbove) {
@@ -424,6 +679,12 @@ export class GodsEye {
       this.camera.position.lerpVectors(f.start, f.end, e);
       if (t >= 1) this.flight = null;
     }
+    if (this.sunPlaying) {
+      this.sun.azimuth = (Number(this.sun.azimuth) + 0.35) % 360;
+      $("geSunAz").value = this.sun.azimuth;
+      this._applySun(true);
+    }
+    if (this.drive) this._driveStep();
     this.controls.update();
     this.renderer.render(this.scene, this.camera);
     this._hud();

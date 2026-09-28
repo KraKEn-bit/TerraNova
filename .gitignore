@@ -27,3 +27,6 @@ cache/tiles/
 
 # God's Eye elevation and imagery tiles (python -m src.acquire.sitetiles)
 cache/sitetiles/
+
+# Relief-shaded hover previews (built on demand from EOX + AWS tiles)
+cache/peek/

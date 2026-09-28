@@ -27,10 +27,10 @@ from pydantic import BaseModel, Field
 from starlette.responses import FileResponse
 from starlette.staticfiles import StaticFiles
 
-from src.acquire import sitetiles, thumbs, tiles
+from src.acquire import peek, sitetiles, thumbs, tiles
 from src.acquire.download import REPO_ROOT, FetchError, offline_mode
 from src.agents.rationale import explain_cell, load_targets
-from src.compute import terrain, validation
+from src.compute import datachecks, robustness, terrain, validation
 from src.compute.gazetteer import Gazetteer, default_gazetteer
 from src.compute.similarity import (
     CRITERIA,
@@ -107,6 +107,24 @@ class ScoreRequest(BaseModel):
     )
     include_field: bool = Field(
         default=False, description="Also return the whole score surface (base64 float32)."
+    )
+    tolerance: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=3.0,
+        description=(
+            "Permissible error: multiplies each criterion's confidence-based error "
+            "(robustness.NOISE x range) into a full-match band. 0 = exact targets."
+        ),
+    )
+    new_only: bool = Field(
+        default=False, description="Rank only cells more than 500 km from any known analog."
+    )
+    max_per_region: int = Field(
+        default=0, ge=0, le=20, description="At most this many results per country (0 = no cap)."
+    )
+    min_distance_km: float = Field(
+        default=0.0, ge=0.0, le=5000.0, description="Minimum great-circle distance between results."
     )
 
 
@@ -251,16 +269,77 @@ def _target_weights(target_id: str | None) -> dict[str, float]:
     return weights
 
 
+def _tolerances(request: ScoreRequest, target_id: str | None) -> dict[str, float]:
+    """Full-match band per criterion: permissible-error x confidence noise x range."""
+    if request.tolerance <= 0:
+        return {}
+    ranges = _ranges()
+    criteria = _targets()[target_id]["criteria"] if target_id else {}
+    out = {}
+    for key in CRITERIA:
+        confidence = str(criteria.get(key, {}).get("confidence", "medium"))
+        noise = robustness.NOISE.get(confidence, robustness.NOISE["medium"])
+        out[key] = request.tolerance * noise * ranges[key].span
+    return out
+
+
 def _score(
     request: ScoreRequest,
 ) -> tuple[SimilarityResult, dict[str, float | None], str | None]:
     profile, target_id = _target_profile(request)
     weights = {**_target_weights(target_id), **(request.weights or {})}
     try:
-        result = compute_similarity(STATE.arrays, profile, weights, _ranges())
+        result = compute_similarity(
+            STATE.arrays, profile, weights, _ranges(), _tolerances(request, target_id)
+        )
     except SimilarityError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return result, profile, target_id
+
+
+def _region_key(lat: float, lon: float) -> str:
+    """Key for the diversity cap: the country of the nearest place (else the region)."""
+    label = _label_for(lat, lon)
+    return str(label.get("country") or label.get("region") or "unknown")
+
+
+def _rank(result: SimilarityResult, mask: np.ndarray, request: ScoreRequest) -> list[int]:
+    """Ranked cell indices with the request's separation, novelty and region rules."""
+    if not request.new_only and not request.max_per_region and not request.min_distance_km:
+        return rank_top(
+            result.score, mask, k=request.top_k, min_separation_cells=request.min_separation_cells
+        )
+    values = np.where(mask, result.score, -np.inf).ravel()
+    order = np.argsort(-values, kind="stable")
+    width = result.score.shape[1]
+    sep = request.min_separation_cells
+    chosen: list[int] = []
+    per_region: dict[str, int] = {}
+    for scanned, index in enumerate(order):
+        if len(chosen) >= request.top_k or scanned > 60000 or not np.isfinite(values[index]):
+            break
+        row, col = divmod(int(index), width)
+        if any(
+            abs(row - r) <= sep and abs(col - c) <= sep
+            for r, c in (divmod(i, width) for i in chosen)
+        ):
+            continue
+        lat, lon = _cell_centre(row, col)
+        if request.min_distance_km and any(
+            validation.haversine_km(lat, lon, *_cell_centre(*divmod(i, width)))
+            < request.min_distance_km
+            for i in chosen
+        ):
+            continue
+        if request.new_only and validation.novelty(lat, lon, _catalog())["status"] != "new":
+            continue
+        if request.max_per_region:
+            region = _region_key(lat, lon)
+            if per_region.get(region, 0) >= request.max_per_region:
+                continue
+            per_region[region] = per_region.get(region, 0) + 1
+        chosen.append(int(index))
+    return chosen
 
 
 def _lst_source(row: int, col: int) -> str | None:
@@ -413,9 +492,7 @@ def score(request: ScoreRequest) -> dict[str, Any]:
     result, profile, target_id = _score(request)
 
     mask = valid_mask(stack)
-    indices = rank_top(
-        result.score, mask, k=request.top_k, min_separation_cells=request.min_separation_cells
-    )
+    indices = _rank(result, mask, request)
     if not indices:
         raise HTTPException(status_code=404, detail="no scorable cells")
 
@@ -433,6 +510,13 @@ def score(request: ScoreRequest) -> dict[str, Any]:
         "weights": {key: result.weights[key] for key in CRITERIA},
         "score_range": [round(float(finite.min()), 6), round(float(finite.max()), 6)],
         "results": results,
+        "filters": {
+            "tolerance": request.tolerance,
+            "new_only": request.new_only,
+            "max_per_region": request.max_per_region,
+            "min_distance_km": request.min_distance_km,
+            "min_separation_cells": request.min_separation_cells,
+        },
         "validation": (
             validation.validate(result.score, body, _catalog(), _validation_tag(target_id))
             if body
@@ -442,6 +526,81 @@ def score(request: ScoreRequest) -> dict[str, Any]:
     if request.include_field:
         payload["field"] = _field(result.score)
     return payload
+
+
+_ROBUSTNESS_CACHE: dict[str, dict[str, Any]] = {}
+
+
+@app.post("/api/robustness")
+def robustness_report(request: ScoreRequest) -> dict[str, Any]:
+    """Uncertainty (Monte Carlo stability of the ranked sites) and sensitivity
+    (validation with each criterion left out). Deterministic; cached per request."""
+    key = request.model_dump_json(exclude={"include_field"})
+    if key in _ROBUSTNESS_CACHE:
+        return _ROBUSTNESS_CACHE[key]
+    stack = STATE.arrays
+    result, profile, target_id = _score(request)
+    mask = valid_mask(stack)
+    indices = _rank(result, mask, request)
+    entry, _, _, body = _explain_context(request, profile, target_id)
+    confidence = {k: str(entry["criteria"][k].get("confidence", "medium")) for k in CRITERIA}
+    weights = dict(result.weights)
+    mc = robustness.stability(
+        stack, profile, confidence, weights, _ranges(), indices, _tolerances(request, target_id)
+    )
+    sens = []
+    if body:
+        for row in robustness.sensitivity(
+            stack, profile, weights, _ranges(), body, _validation_tag(target_id), mask, _catalog()
+        ):
+            top = row["top_index"]
+            lat, lon = (
+                _cell_centre(*divmod(top, result.score.shape[1]))
+                if top is not None
+                else (None, None)
+            )
+            sens.append(
+                {
+                    "without": row["without"],
+                    "label": _ranges()[row["without"]].label,
+                    "auc": row["auc"],
+                    "top_site": _label_for(lat, lon)["text"] if lat is not None else None,
+                    "top_unchanged": top == (indices[0] if indices else None),
+                }
+            )
+    payload = {
+        "method": robustness.__doc__.strip(),
+        "stability": {str(i): s for i, s in zip(indices, mc["stability"], strict=True)},
+        "runs": mc["runs"],
+        "seed": mc["seed"],
+        "noise": mc["noise"],
+        "top_share": mc["top_share"],
+        "sensitivity": sens,
+    }
+    if len(_ROBUSTNESS_CACHE) > 64:
+        _ROBUSTNESS_CACHE.clear()
+    _ROBUSTNESS_CACHE[key] = payload
+    return payload
+
+
+_DATACHECKS: list[dict[str, Any]] = []
+
+
+@app.get("/api/datachecks")
+def data_checks() -> dict[str, Any]:
+    """Do independent datasets agree where physics says they must? (Spearman rho)"""
+    if not _DATACHECKS:
+        derived = REPO_ROOT / "cache" / "derived"
+        arrays = {
+            name: np.load(derived / f"{name}.npy").astype(np.float64)
+            for name in ("lst_modis", "power_ts_range")
+        }
+        arrays.update({key: STATE.arrays[key] for key in CRITERIA})
+        lat = 90.0 - (np.arange(360) + 0.5) * 0.5
+        arrays["abs_latitude"] = np.repeat(np.abs(lat)[:, None], 720, axis=1)
+        land = np.load(derived / "land_fraction.npy") >= 0.5
+        _DATACHECKS.extend(datachecks.run(arrays, land))
+    return {"method": datachecks.__doc__.strip(), "checks": _DATACHECKS}
 
 
 @app.post("/api/explain")
@@ -605,6 +764,36 @@ def site3d(
         },
         "credits": {"elevation": sitetiles.DEM_CREDIT, "imagery": img["credit"]},
     }
+
+
+@app.get("/api/peek")
+def peek_info(
+    lat: float = Query(..., ge=-90.0, le=90.0),
+    lon: float = Query(..., ge=-180.0, le=180.0),
+) -> dict[str, Any]:
+    """Relief-shaded Sentinel-2 preview of a cell plus a 64 x 64 heightmap for a 3D card."""
+    clat, clon = thumbs.cell_centre(lat, lon)
+    if abs(clat) > terrain.MAX_MERCATOR_LAT - 1.5:
+        raise HTTPException(status_code=422, detail="no elevation tiles this close to the pole")
+    try:
+        info = peek.build(clat, clon, offline=offline_mode())
+    except FetchError as exc:
+        raise HTTPException(status_code=404, detail="preview not cached (offline)") from exc
+    return {**info, "image_url": f"/api/peek.jpg?lat={clat}&lon={clon}"}
+
+
+@app.get("/api/peek.jpg")
+def peek_image(
+    lat: float = Query(..., ge=-90.0, le=90.0),
+    lon: float = Query(..., ge=-180.0, le=180.0),
+) -> FileResponse:
+    clat, clon = thumbs.cell_centre(lat, lon)
+    path = peek.image_path(clat, clon)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="call /api/peek first")
+    return FileResponse(
+        path, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=86400"}
+    )
 
 
 @app.get("/api/imagery/{source}/{z}/{x}/{y}.jpg")

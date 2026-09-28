@@ -101,6 +101,30 @@ def stats(dem: np.ndarray, slope: np.ndarray, mask: np.ndarray | None = None) ->
     )
 
 
+def hillshade(
+    dem: np.ndarray,
+    cell_m: float,
+    azimuth: float = 315.0,
+    altitude: float = 45.0,
+    exaggeration: float = 2.0,
+) -> np.ndarray:
+    """Standard hillshade (0 = full shadow, 1 = facing the light) of a DEM.
+
+    ``cell_m`` is the ground size of one pixel; the light comes from
+    ``azimuth`` degrees clockwise from north, ``altitude`` degrees above the
+    horizon. Rows run north to south.
+    """
+    dz_dy, dz_dx = np.gradient(dem * exaggeration, cell_m)
+    slope = np.arctan(np.hypot(dz_dx, dz_dy))
+    # Aspect = compass direction the slope faces (downhill), clockwise from north.
+    # Downhill is minus the gradient; rows increase southwards, so north = -row.
+    aspect = np.arctan2(-dz_dx, dz_dy)
+    zenith = np.radians(90.0 - altitude)
+    az = np.radians(azimuth)
+    shade = np.cos(zenith) * np.cos(slope) + np.sin(zenith) * np.sin(slope) * np.cos(az - aspect)
+    return np.clip(shade, 0.0, 1.0)
+
+
 def block_mean(a: np.ndarray, k: int) -> np.ndarray:
     """Mean of non-overlapping k x k blocks (shape must divide by k)."""
     h, w = a.shape

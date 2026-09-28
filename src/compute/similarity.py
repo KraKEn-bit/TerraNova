@@ -203,13 +203,21 @@ def validate_weights(
     return merged
 
 
-def criterion_similarity(values: np.ndarray, target: float, spec: CriterionRange) -> np.ndarray:
-    """Similarity of every cell to the target for a single criterion."""
+def criterion_similarity(
+    values: np.ndarray, target: float, spec: CriterionRange, tolerance: float = 0.0
+) -> np.ndarray:
+    """Similarity of every cell to the target for a single criterion.
+
+    Within ``tolerance`` (same units as the criterion) of the target the
+    similarity is 1; beyond it, it falls linearly over the criterion's range.
+    """
     values = np.asarray(values, dtype=np.float64)
     target = float(target)
     if not math.isfinite(target):
         raise SimilarityError(f"target value for {spec.key} is not finite: {target}")
-    distance = np.abs(values - target) / spec.span
+    if not math.isfinite(tolerance) or tolerance < 0:
+        raise SimilarityError(f"tolerance for {spec.key} must be >= 0")
+    distance = np.maximum(np.abs(values - target) - tolerance, 0.0) / spec.span
     similarity = 1.0 - distance
     np.clip(similarity, 0.0, 1.0, out=similarity)
     return similarity
@@ -238,8 +246,12 @@ def compute_similarity(
     target: Mapping[str, float | None],
     weights: Mapping[str, float] | None = None,
     ranges: Mapping[str, CriterionRange] | None = None,
+    tolerance: Mapping[str, float] | None = None,
 ) -> SimilarityResult:
     """Score every grid cell against a target profile.
+
+    ``tolerance`` optionally gives, per criterion, a band around the target
+    (in the criterion's units) inside which a cell counts as a full match.
 
     A target value of ``None`` means "not used for this target": its weight is
     forced to 0 and its similarity is reported as NaN.
@@ -287,7 +299,12 @@ def compute_similarity(
             similarity = np.full(shape, np.nan)
             factor = np.ones(shape)
         else:
-            similarity = criterion_similarity(arrays[key], effective[key], ranges[key])  # type: ignore[arg-type]
+            similarity = criterion_similarity(
+                arrays[key],
+                effective[key],  # type: ignore[arg-type]
+                ranges[key],
+                float((tolerance or {}).get(key, 0.0)),
+            )
             factor = np.power(similarity, norm_weights[key] / weight_total)
         similarities[key] = similarity
         factors[key] = factor
