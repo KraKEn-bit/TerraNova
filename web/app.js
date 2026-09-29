@@ -1,4 +1,4 @@
-/* Earth Analogue Finder - interface controller.
+/* TerraNova - interface controller.
  * Every number shown comes from the API (src/compute); this file only renders. */
 
 import { Globe, Twin } from "./globe.js";
@@ -1022,7 +1022,7 @@ function exportGeojson() {
     geometry: { type: "Point", coordinates: [r.lon, r.lat] },
     properties: { rank: r.rank, name: r.label.text, score: r.score, percentile: r.percentile, novelty: r.novelty.status, nearest_known: r.novelty.nearest_known, ...Object.fromEntries(Object.entries(r.values).map(([k, v]) => [`value_${k}`, v])), ...Object.fromEntries(Object.entries(r.similarities).map(([k, v]) => [`similarity_${k}`, v])) },
   }));
-  const doc = { type: "FeatureCollection", properties: { target: d.target_id, weights: d.weights, generated_by: "Earth Analogue Finder", cell_size_degrees: 0.5 }, features };
+  const doc = { type: "FeatureCollection", properties: { target: d.target_id, weights: d.weights, generated_by: "TerraNova", cell_size_degrees: 0.5 }, features };
   download(`analogs_${d.target_id}.geojson`, JSON.stringify(doc, null, 2), "application/geo+json");
 }
 
@@ -1336,7 +1336,7 @@ let tourIndex = -1;
 const TOUR = [
   {
     title: "Welcome",
-    text: "Earth Analogue Finder compares every land cell on Earth with a Moon or Mars base site, using NASA data, and ranks the closest matches.",
+    text: "TerraNova compares every land cell on Earth with a Moon or Mars base site, using NASA data, and ranks the closest matches.",
     run: async () => { if (eye.open) eye.close(); chooseTargetById("lunar_south_pole"); showList(); await sleep(300); globe.home(); },
   },
   {

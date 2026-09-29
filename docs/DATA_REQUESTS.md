@@ -72,7 +72,7 @@ Still wanted:
 
 ## F. Decisions only the team can make
 
-1. **Product name.** "Earth Analogue Finder" (current) or "TerraLuna" (research notes)?
+1. **Product name.** **TerraNova** (locked for Space Apps 2026).
    It goes in the video on 1 Oct.
 2. **Which archetypes to show on day 1 of the hackathon.** Recommendation: the lunar
    south pole plus PSR cold trap for the Moon, and Jezero plus Gale for Mars.

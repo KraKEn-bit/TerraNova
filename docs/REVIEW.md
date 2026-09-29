@@ -91,7 +91,7 @@ Reproduce them with `OFFLINE=1 python -m scripts.check_controls`.
 | Frontend | React + Vite + TS, MapLibre, three.js twin view | Static, offline, "no build step you cannot rerun without internet" | Vanilla JS test page | MapLibre with local assets. Add Vite only if `npm install` is done before the event. The 3D twin view is a stretch goal. |
 | Global compute | Google Earth Engine | Offline-first; the API never calls out during the demo | Local numpy/zarr | GEE is fine **only in `src/acquire`, run before the event**. Export results to the cache. |
 | ΔT target | Earth proxy of 30–35 K | MODIS LST diurnal range | Real body values: 120 K and 86 K | Earth proxy, labelled as a proxy (see C3). |
-| Product name | "TerraLuna" | n/a | "Earth Analogue Finder" / exo-earth | **Pick one this week** (it goes in the video). |
+| Product name | **TerraNova** | n/a | exo-earth repo | Locked for prelim / hackathon. |
 | MODIS | Main thermal source | "Terra and Aqua MODIS shutting down from late 2026" | Uses a 2000–2020 MODIS mosaic | The archive is still valid. Mention VIIRS (VNP21/VJ121) as the continuity path. |
 | Required repo files | n/a | `DEVELOPMENT.md`, `AGENTS.md`, `.env.example`, `demo_fixtures/`, `docs/AI_USE.md`, `make cache/demo/test` | None of these existed | **Added in this workspace** (see §6). |
 

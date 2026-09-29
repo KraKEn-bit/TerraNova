@@ -107,7 +107,7 @@ UI_DEFAULTS: dict[str, Any] = {
 
 app = FastAPI(
     lifespan=_lifespan,
-    title="Earth Analogue Finder",
+    title="TerraNova",
     version="2.0.0",
     description=(
         "Deterministic multi-criteria similarity between Moon and Mars base-site "
