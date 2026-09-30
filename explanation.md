@@ -1,12 +1,14 @@
-# Earth Analogue Finder — System Architecture & Implementation Guide
+> **Outdated (v1, 27 Sep 2026).** This describes the first prototype (aridity index, six equal-weight criteria, linear mean). See `README.md` for the current system.
+
+# TerraNova — System Architecture & Implementation Guide
 
 
 ---
 
 ## 1. Executive Summary & Pitch
 
-### What is the Earth Analogue Finder?
-The **Earth Analogue Finder** is a deterministic geospatial search system that ranks Earth's land surface against extraterrestrial base-site target profiles (such as the **Lunar South Pole / Shackleton Rim** or **Mars' Jezero Crater**). It identifies 0.5° (~55 km at equator) grid cells on Earth whose terrain, aridity, temperature range, surface roughness, and diurnal thermal behaviour best match the target site.
+### What is the TerraNova?
+The **TerraNova** is a deterministic geospatial search system that ranks Earth's land surface against extraterrestrial base-site target profiles (such as the **Lunar South Pole / Shackleton Rim** or **Mars' Jezero Crater**). It identifies 0.5° (~55 km at equator) grid cells on Earth whose terrain, aridity, temperature range, surface roughness, and diurnal thermal behaviour best match the target site.
 
 ### Key Highlights & Core Value Proposition
 1. **100% Deterministic Arithmetic**: There are no language models, no neural networks, no random numbers, and no runtime network calls. The exact same input parameters will *always* produce byte-identical floating-point scores and word-for-word identical explanations.
@@ -229,7 +231,7 @@ Built with **FastAPI**, served via **Uvicorn**.
 ## 13. How to Present This Project (Q&A & Elevator Pitches)
 
 ### 30-Second Elevator Pitch
-> *"The Earth Analogue Finder is a deterministic geospatial search system built for planetary scientists and mission planners. Give it an extraterrestrial location like Mars' Jezero Crater or the Lunar South Pole, and it instantly searches all 61,000+ scorable land cells on Earth to find the top terrestrial analogs matching its terrain, climate, aridity, and thermal behavior. Everything is 100% deterministic, backed by source citations down to every single number, and runs completely offline."*
+> *"The TerraNova is a deterministic geospatial search system built for planetary scientists and mission planners. Give it an extraterrestrial location like Mars' Jezero Crater or the Lunar South Pole, and it instantly searches all 61,000+ scorable land cells on Earth to find the top terrestrial analogs matching its terrain, climate, aridity, and thermal behavior. Everything is 100% deterministic, backed by source citations down to every single number, and runs completely offline."*
 
 ### Key Questions & How to Answer Them
 

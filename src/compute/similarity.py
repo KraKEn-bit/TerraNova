@@ -7,16 +7,27 @@ outputs.
 
 Math
 ----
-For criterion ``k`` with fixed stored range ``[lo_k, hi_k]`` and target value
-``t_k``::
+For criterion ``k`` with fixed stored range ``[lo_k, hi_k]``, Earth envelope
+``[e_lo_k, e_hi_k]`` and target value ``t_k``::
 
-    s_k(x) = clip(1 - |x_k - t_k| / (hi_k - lo_k), 0, 1)
+    t'_k   = clip(t_k, e_lo_k, e_hi_k)          (effective, Earth-reachable target)
+    s_k(x) = clip(1 - |x_k - t'_k| / (hi_k - lo_k), 0, 1)
 
-The weighted score for a cell is the normalised weighted mean of the per
-criterion similarities::
+Targets beyond anything Earth offers - the Moon's 120 K day/night swing against
+Earth's ~27 K (99.5th percentile) - are scored against Earth's most extreme value instead,
+so the criterion means "as close to the target as Earth gets" rather than
+silently penalising every cell. The API reports both values.
 
-    score       = sum_k w_k * s_k  /  sum_k w_k
-    contrib_k   = w_k * s_k        /  sum_k w_k          (sums to score)
+The score of a cell is the weighted geometric mean of the per-criterion
+similarities::
+
+    score    = prod_k s_k ** (w_k / W),   W = sum_k w_k
+    factor_k = s_k ** (w_k / W)           (prod_k factor_k == score)
+
+A geometric mean means one criterion that does not match at all (s_k = 0)
+vetoes the cell: a rainforest cannot become a lunar analog by having the right
+slope. A zero weight removes a criterion (x ** 0 == 1). Validated against known
+analog sites in :mod:`src.compute.validation`.
 """
 
 from __future__ import annotations
@@ -30,15 +41,31 @@ from pathlib import Path
 import numpy as np
 
 CRITERIA: tuple[str, ...] = (
-    "aridity",
+    "precipitation",
+    "vegetation",
     "annual_temperature_range",
-    "elevation",
+    "lst_diurnal_range",
     "slope",
     "roughness",
-    "lst_diurnal_range",
+    "elevation",
+    "mean_annual_temperature",
 )
 
-DEFAULT_WEIGHTS: dict[str, float] = {key: 1.0 for key in CRITERIA}
+QUANTILE_LEVELS: tuple[int, ...] = tuple(range(0, 101, 5))
+
+NORMALIZATION_PATH = Path(__file__).resolve().parents[2] / "data" / "normalization.json"
+
+
+def _default_weights() -> dict[str, float]:
+    """Default weights from data/normalization.json; 1.0 for any key it omits."""
+    weights = {key: 1.0 for key in CRITERIA}
+    if NORMALIZATION_PATH.exists():
+        stored = json.loads(NORMALIZATION_PATH.read_text(encoding="utf-8")).get("weights", {})
+        weights.update({key: float(stored[key]) for key in CRITERIA if key in stored})
+    return weights
+
+
+DEFAULT_WEIGHTS: dict[str, float] = _default_weights()
 
 
 class SimilarityError(ValueError):
@@ -55,10 +82,23 @@ class CriterionRange:
     label: str = ""
     unit: str = ""
     description: str = ""
+    earth_min: float = -math.inf
+    earth_max: float = math.inf
+    earth_quantiles: tuple[float, ...] = ()
 
     @property
     def span(self) -> float:
         return float(self.max) - float(self.min)
+
+    def effective_target(self, target: float) -> float:
+        """The target clipped into the range of values that exist on Earth."""
+        return min(max(float(target), self.earth_min), self.earth_max)
+
+    def value_at_percentile(self, percentile: float) -> float:
+        """Earth's value of this criterion at a given percentile of land cells."""
+        if len(self.earth_quantiles) != len(QUANTILE_LEVELS):
+            raise SimilarityError(f"no Earth quantiles stored for {self.key}; run calibrate")
+        return float(np.interp(float(percentile), QUANTILE_LEVELS, self.earth_quantiles))
 
     def validate(self) -> CriterionRange:
         if not math.isfinite(self.min) or not math.isfinite(self.max):
@@ -76,9 +116,10 @@ class SimilarityResult:
 
     score: np.ndarray
     similarities: Mapping[str, np.ndarray]
-    contributions: Mapping[str, np.ndarray]
+    factors: Mapping[str, np.ndarray]
     weights: Mapping[str, float]
-    target: Mapping[str, float]
+    target: Mapping[str, float | None]
+    effective_target: Mapping[str, float | None]
     ranges: Mapping[str, CriterionRange] = field(repr=False)
 
     @property
@@ -100,6 +141,9 @@ def ranges_from_mapping(raw: Mapping[str, Mapping[str, object]]) -> dict[str, Cr
             label=str(entry.get("label", key)),
             unit=str(entry.get("unit", "")),
             description=str(entry.get("description", "")),
+            earth_min=float(entry.get("earth_min", -math.inf)),  # type: ignore[arg-type]
+            earth_max=float(entry.get("earth_max", math.inf)),  # type: ignore[arg-type]
+            earth_quantiles=tuple(float(q) for q in entry.get("earth_quantiles", ())),  # type: ignore[union-attr]
         ).validate()
     return ranges
 
@@ -135,7 +179,14 @@ def ranges_from_store(store_path: str | Path) -> dict[str, CriterionRange]:
     return ranges_from_mapping(root.attrs["normalization"])
 
 
-def validate_weights(weights: Mapping[str, float] | None) -> dict[str, float]:
+def is_used(value: object) -> bool:
+    """A target criterion is used when it has a finite value (None = not used)."""
+    return value is not None and math.isfinite(float(value))  # type: ignore[arg-type]
+
+
+def validate_weights(
+    weights: Mapping[str, float] | None, *, allow_all_zero: bool = False
+) -> dict[str, float]:
     """Return weights for every criterion, rejecting unusable input."""
     merged = dict(DEFAULT_WEIGHTS)
     if weights:
@@ -147,18 +198,26 @@ def validate_weights(weights: Mapping[str, float] | None) -> dict[str, float]:
     for key, value in merged.items():
         if not math.isfinite(value) or value < 0:
             raise SimilarityError(f"weight for {key} must be finite and >= 0, got {value}")
-    if sum(merged.values()) <= 0:
+    if not allow_all_zero and sum(merged.values()) <= 0:
         raise SimilarityError("at least one weight must be > 0")
     return merged
 
 
-def criterion_similarity(values: np.ndarray, target: float, spec: CriterionRange) -> np.ndarray:
-    """Similarity of every cell to the target for a single criterion."""
+def criterion_similarity(
+    values: np.ndarray, target: float, spec: CriterionRange, tolerance: float = 0.0
+) -> np.ndarray:
+    """Similarity of every cell to the target for a single criterion.
+
+    Within ``tolerance`` (same units as the criterion) of the target the
+    similarity is 1; beyond it, it falls linearly over the criterion's range.
+    """
     values = np.asarray(values, dtype=np.float64)
     target = float(target)
     if not math.isfinite(target):
         raise SimilarityError(f"target value for {spec.key} is not finite: {target}")
-    distance = np.abs(values - target) / spec.span
+    if not math.isfinite(tolerance) or tolerance < 0:
+        raise SimilarityError(f"tolerance for {spec.key} must be >= 0")
+    distance = np.maximum(np.abs(values - target) - tolerance, 0.0) / spec.span
     similarity = 1.0 - distance
     np.clip(similarity, 0.0, 1.0, out=similarity)
     return similarity
@@ -184,11 +243,18 @@ def _as_stack(
 
 def compute_similarity(
     stack: Mapping[str, np.ndarray],
-    target: Mapping[str, float],
+    target: Mapping[str, float | None],
     weights: Mapping[str, float] | None = None,
     ranges: Mapping[str, CriterionRange] | None = None,
+    tolerance: Mapping[str, float] | None = None,
 ) -> SimilarityResult:
     """Score every grid cell against a target profile.
+
+    ``tolerance`` optionally gives, per criterion, a band around the target
+    (in the criterion's units) inside which a cell counts as a full match.
+
+    A target value of ``None`` means "not used for this target": its weight is
+    forced to 0 and its similarity is reported as NaN.
 
     Parameters
     ----------
@@ -198,30 +264,51 @@ def compute_similarity(
     target:
         Mapping of criterion key to the target value.
     weights:
-        Per-criterion weights; defaults to equal weights. Normalised internally.
+        Per-criterion weights; missing keys use the defaults in
+        data/normalization.json. Normalised internally.
     ranges:
         Fixed stored ranges; loaded from ``data/normalization.json`` when omitted.
     """
     ranges = dict(ranges) if ranges is not None else load_normalization()
     arrays = _as_stack(stack, ranges)
-    norm_weights = validate_weights(weights)
+    norm_weights = validate_weights(weights, allow_all_zero=True)
 
     missing_targets = [key for key in CRITERIA if key not in target]
     if missing_targets:
         raise SimilarityError(f"target profile is missing {missing_targets}")
+    used = {key: is_used(target[key]) for key in CRITERIA}
+    for key in CRITERIA:
+        if not used[key]:
+            norm_weights[key] = 0.0
+    if sum(norm_weights.values()) <= 0:
+        raise SimilarityError("at least one criterion with a target value must have weight > 0")
 
     weight_total = sum(norm_weights[key] for key in CRITERIA)
 
     similarities: dict[str, np.ndarray] = {}
-    contributions: dict[str, np.ndarray] = {}
-    score = np.zeros(arrays[CRITERIA[0]].shape, dtype=np.float64)
+    factors: dict[str, np.ndarray] = {}
+    score = np.ones(arrays[CRITERIA[0]].shape, dtype=np.float64)
 
+    effective: dict[str, float | None] = {
+        key: ranges[key].effective_target(float(target[key])) if used[key] else None  # type: ignore[arg-type]
+        for key in CRITERIA
+    }
+    shape = arrays[CRITERIA[0]].shape
     for key in CRITERIA:
-        similarity = criterion_similarity(arrays[key], float(target[key]), ranges[key])
-        contribution = (norm_weights[key] / weight_total) * similarity
+        if effective[key] is None:
+            similarity = np.full(shape, np.nan)
+            factor = np.ones(shape)
+        else:
+            similarity = criterion_similarity(
+                arrays[key],
+                effective[key],  # type: ignore[arg-type]
+                ranges[key],
+                float((tolerance or {}).get(key, 0.0)),
+            )
+            factor = np.power(similarity, norm_weights[key] / weight_total)
         similarities[key] = similarity
-        contributions[key] = contribution
-        score += contribution
+        factors[key] = factor
+        score = score * factor
 
     valid = np.ones(score.shape, dtype=bool)
     for key in CRITERIA:
@@ -235,9 +322,10 @@ def compute_similarity(
     return SimilarityResult(
         score=score,
         similarities=similarities,
-        contributions=contributions,
+        factors=factors,
         weights=norm_weights,
-        target={key: float(target[key]) for key in CRITERIA},
+        target={key: float(target[key]) if used[key] else None for key in CRITERIA},  # type: ignore[arg-type]
+        effective_target=effective,
         ranges=ranges,
     )
 
@@ -330,7 +418,5 @@ def assert_deterministic(
         if not np.array_equal(first.score, again.score, equal_nan=True):
             raise SimilarityError("similarity is not deterministic")
         for key in CRITERIA:
-            if not np.array_equal(
-                first.contributions[key], again.contributions[key], equal_nan=True
-            ):
-                raise SimilarityError(f"contribution for {key} is not deterministic")
+            if not np.array_equal(first.factors[key], again.factors[key], equal_nan=True):
+                raise SimilarityError(f"factor for {key} is not deterministic")

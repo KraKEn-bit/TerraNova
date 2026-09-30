@@ -1,70 +1,265 @@
 {
   "attributes": {
-    "schema_version": "1.0",
-    "created_utc": "2026-09-27T05:21:34+00:00",
+    "schema_version": "2.0",
+    "created_utc": "2026-09-28T17:49:04+00:00",
     "normalization": {
-      "aridity": {
-        "label": "Aridity index",
-        "unit": "1",
-        "description": "Liquid-water aridity index, precipitation / potential evapotranspiration. 0 = hyper-arid (no effective precipitation).",
+      "precipitation": {
+        "label": "Annual precipitation",
+        "unit": "mm/yr",
+        "description": "Mean annual bias-corrected precipitation, NASA POWER (MERRA-2) 2001-2020 climatology. Replaces the aridity index, which read cold polar deserts as humid and had no Antarctic coverage.",
         "min": 0.0,
-        "max": 1.0,
-        "source_dataset_id": "global_ai_et0_v3_1",
-        "source_url": "https://doi.org/10.6084/m9.figshare.7504448"
+        "max": 2000.0,
+        "source_dataset_id": "nasa_power_merra2_climatology_2001_2020",
+        "source_url": "https://power.larc.nasa.gov/docs/services/api/temporal/climatology/",
+        "earth_min": 4.0177,
+        "earth_max": 2926.4963,
+        "earth_quantiles": [
+          0.0,
+          27.759,
+          42.369,
+          76.7025,
+          115.419,
+          161.0753,
+          220.9763,
+          294.0262,
+          367.8068,
+          429.8993,
+          487.2435,
+          542.3962,
+          603.0278,
+          666.9465,
+          739.9965,
+          817.0643,
+          921.891,
+          1103.4203,
+          1334.7696,
+          1723.1399,
+          5632.8857
+        ]
+      },
+      "vegetation": {
+        "label": "Vegetation (NDVI)",
+        "unit": "NDVI",
+        "description": "Annual maximum of the 2023 MODIS Terra monthly NDVI (MOD13C2) from NASA GIBS, clipped at 0 and averaged over the cell. Neither the Moon nor Mars has vegetation, so greener cells match less.",
+        "min": 0.0,
+        "max": 0.8,
+        "source_dataset_id": "gibs_modis_terra_l3_ndvi_monthly_2023",
+        "source_url": "https://nasa-gibs.github.io/gibs-api-docs/available-visualizations/",
+        "earth_min": 0.0,
+        "earth_max": 0.9012,
+        "earth_quantiles": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0543,
+          0.1087,
+          0.1739,
+          0.2726,
+          0.3979,
+          0.5088,
+          0.5887,
+          0.6433,
+          0.6881,
+          0.723,
+          0.7518,
+          0.777,
+          0.8006,
+          0.826,
+          0.8584,
+          0.9301
+        ]
       },
       "annual_temperature_range": {
         "label": "Annual temperature range",
         "unit": "K",
-        "description": "Warmest month mean minus coldest month mean near-surface temperature.",
+        "description": "Warmest-month minus coldest-month mean 2 m air temperature, NASA POWER (MERRA-2) 2001-2020 climatology.",
         "min": 0.0,
-        "max": 160.0,
-        "source_dataset_id": "worldclim_2_1_tavg",
-        "source_url": "https://doi.org/10.1038/s41597-018-0002-1"
+        "max": 60.0,
+        "source_dataset_id": "nasa_power_merra2_climatology_2001_2020",
+        "source_url": "https://power.larc.nasa.gov/docs/services/api/temporal/climatology/",
+        "earth_min": 0.917,
+        "earth_max": 51.2598,
+        "earth_quantiles": [
+          0.505,
+          3.29,
+          5.4538,
+          9.0409,
+          12.9734,
+          16.159,
+          18.014,
+          19.535,
+          21.405,
+          23.1777,
+          24.76,
+          26.2463,
+          27.779,
+          29.348,
+          31.067,
+          32.9805,
+          34.9838,
+          37.6282,
+          39.9594,
+          43.4807,
+          59.366
+        ]
       },
-      "elevation": {
-        "label": "Elevation",
-        "unit": "m",
-        "description": "Mean surface elevation of the grid cell relative to the body's datum (Earth: mean sea level; Moon: mean lunar radius; Mars: areoid).",
-        "min": -3000.0,
-        "max": 9000.0,
-        "source_dataset_id": "aws_terrain_tiles_terrarium",
-        "source_url": "https://registry.opendata.aws/terrain-tiles/"
+      "lst_diurnal_range": {
+        "label": "Day-night surface temperature swing",
+        "unit": "K",
+        "description": "Long-term (2000-2020) mean MODIS Terra daytime minus nighttime land-surface temperature. Where MODIS has no data (mainly Antarctica) the value is predicted from NASA POWER TS_RANGE by a linear fit over cells both cover.",
+        "min": 0.0,
+        "max": 40.0,
+        "source_dataset_id": "zenodo_modis_lst_1km_2000_2020",
+        "source_url": "https://doi.org/10.5281/zenodo.6458406",
+        "earth_min": 0.9904,
+        "earth_max": 26.7896,
+        "earth_quantiles": [
+          0.5369,
+          3.0523,
+          3.875,
+          4.5381,
+          5.0438,
+          5.4247,
+          5.7816,
+          6.1303,
+          6.5125,
+          6.9497,
+          7.5678,
+          8.3864,
+          9.4168,
+          10.7165,
+          12.2478,
+          13.9899,
+          15.9917,
+          17.8538,
+          19.2769,
+          21.0548,
+          38.6634
+        ]
       },
       "slope": {
         "label": "Regional slope",
         "unit": "degrees",
-        "description": "Magnitude of the horizontal gradient of the 0.5-degree-smoothed elevation field, in degrees; one value per cell.",
+        "description": "Magnitude of the horizontal gradient of the 0.5-degree-smoothed elevation field. Describes regional tilt (~55 km), not local slope.",
         "min": 0.0,
-        "max": 10.0,
+        "max": 3.0,
         "source_dataset_id": "aws_terrain_tiles_terrarium",
-        "source_url": "https://registry.opendata.aws/terrain-tiles/"
+        "source_url": "https://registry.opendata.aws/terrain-tiles/",
+        "earth_min": 0.005,
+        "earth_max": 2.7513,
+        "earth_quantiles": [
+          0.0004,
+          0.0201,
+          0.033,
+          0.0462,
+          0.0604,
+          0.076,
+          0.0926,
+          0.1107,
+          0.1304,
+          0.1516,
+          0.1751,
+          0.2024,
+          0.2346,
+          0.2738,
+          0.3251,
+          0.3904,
+          0.4766,
+          0.5928,
+          0.7707,
+          1.1339,
+          12.5455
+        ]
       },
       "roughness": {
-        "label": "Surface roughness",
+        "label": "Terrain roughness",
         "unit": "m",
-        "description": "Root-mean-square height residual of the digital elevation model about a least-squares plane fitted over a 3x3 neighbourhood of the 1/12-degree DEM analysis grid (~9.3 km spacing at the equator, ~28 km window), block-averaged onto the cell.",
+        "description": "RMS height residual of the DEM about a least-squares plane over a 3x3 neighbourhood of the 1/12-degree grid (~28 km window), averaged over the cell.",
         "min": 0.0,
-        "max": 400.0,
+        "max": 200.0,
         "source_dataset_id": "aws_terrain_tiles_terrarium",
-        "source_url": "https://registry.opendata.aws/terrain-tiles/"
+        "source_url": "https://registry.opendata.aws/terrain-tiles/",
+        "earth_min": 0.3301,
+        "earth_max": 191.1782,
+        "earth_quantiles": [
+          0.0046,
+          0.7895,
+          1.2175,
+          1.7124,
+          2.292,
+          2.9818,
+          3.7581,
+          4.6701,
+          5.6938,
+          6.9227,
+          8.4606,
+          10.4942,
+          13.1661,
+          16.9039,
+          22.3168,
+          29.4803,
+          38.9043,
+          51.0543,
+          67.5012,
+          96.8773,
+          426.9245
+        ]
       },
-      "lst_diurnal_range": {
-        "label": "LST diurnal range",
-        "unit": "K",
-        "description": "Long-term (2000-2020) mean daytime MODIS land-surface temperature minus long-term mean nighttime MODIS land-surface temperature, averaged onto the cell.",
-        "min": 0.0,
-        "max": 130.0,
-        "source_dataset_id": "zenodo_modis_lst_1km_2000_2020",
-        "source_url": "https://doi.org/10.5281/zenodo.6458406"
+      "elevation": {
+        "label": "Elevation",
+        "unit": "m",
+        "description": "Mean surface elevation of the cell above Earth mean sea level. Off by default: Moon and Mars elevations are measured from their own datums and cannot be compared with Earth's.",
+        "min": -500.0,
+        "max": 6000.0,
+        "source_dataset_id": "aws_terrain_tiles_terrarium",
+        "source_url": "https://registry.opendata.aws/terrain-tiles/",
+        "earth_min": 5.7686,
+        "earth_max": 4841.7419,
+        "earth_quantiles": [
+          -69.9632,
+          49.7207,
+          92.3344,
+          131.3295,
+          171.6227,
+          218.6001,
+          271.4908,
+          323.5905,
+          381.3365,
+          443.6804,
+          524.9802,
+          634.2297,
+          783.7199,
+          965.3136,
+          1168.7493,
+          1429.1667,
+          1818.9445,
+          2295.5596,
+          2818.9333,
+          3401.2516,
+          5698.9941
+        ]
+      },
+      "mean_annual_temperature": {
+        "label": "Mean temperature",
+        "unit": "\u00b0C",
+        "description": "Mean annual 2 m air temperature (mean of the 12 monthly means), NASA POWER (MERRA-2) 2001-2020. Off by default; switched on by cold-trap targets, where it is the only criterion that says 'cold'.",
+        "min": -60.0,
+        "max": 35.0,
+        "source_dataset_id": "nasa_power_merra2_climatology_2001_2020",
+        "source_url": "https://power.larc.nasa.gov/docs/services/api/temporal/climatology/"
       }
     },
     "weights": {
-      "aridity": 1.0,
+      "precipitation": 1.0,
+      "vegetation": 1.0,
       "annual_temperature_range": 1.0,
-      "elevation": 1.0,
+      "lst_diurnal_range": 1.0,
       "slope": 1.0,
       "roughness": 1.0,
-      "lst_diurnal_range": 1.0
+      "elevation": 0.0,
+      "mean_annual_temperature": 0.0
     },
     "grid": {
       "crs": "EPSG:4326",
@@ -75,43 +270,49 @@
       "cell_degrees": 0.5,
       "row0_centre_latitude": 89.75,
       "column0_centre_longitude": -179.75,
-      "ordering": "row-major, north to south then west to east",
-      "sub_grid": {
-        "shape": [
-          2160,
-          4320
-        ],
-        "cell_degrees": 0.08333333333333333,
-        "purpose": "1/12 degree DEM analysis grid used for slope and roughness"
-      }
+      "ordering": "row-major, north to south then west to east"
     },
-    "land_rule": "A cell is a candidate when at least 50% of its area is land, where land is the fraction of the 30 arc-second Aridity Index pixels that carry a valid value (the source encodes open ocean as 0 and fill as 65535). Every predictor is set to NaN below that threshold, so similarity.valid_mask is the land mask.",
+    "land_rule": "A cell is a candidate when at least 50% of its 1/12 degree pixels fall inside Natural Earth 1:50m land and outside 1:50m lakes.",
+    "lst_source_codes": {
+      "1": "MODIS LST",
+      "2": "NASA POWER TS_RANGE fit"
+    },
+    "lst_fit": {
+      "slope": 0.8806,
+      "intercept": -1.0301,
+      "r": 0.9204,
+      "n": 61268
+    },
     "sources": [
       {
+        "dataset_id": "natural_earth_50m_land_lakes",
+        "title": "Natural Earth 1:50m land minus 1:50m lakes (public domain)",
+        "url": "https://www.naturalearthdata.com/downloads/50m-physical-vectors/",
+        "used_for": "candidate land mask"
+      },
+      {
         "dataset_id": "aws_terrain_tiles_terrarium",
-        "title": "Mapzen/AWS Terrain Tiles, Terrarium RGB encoding, zoom 4",
+        "title": "AWS Terrain Tiles (Terrarium, zoom 4): SRTM, GMTED and ETOPO1 composite",
         "url": "https://registry.opendata.aws/terrain-tiles/",
-        "local_files": "cache/raw/terrarium_4_*.png (256 tiles)"
+        "used_for": "elevation, slope, roughness"
       },
       {
-        "dataset_id": "global_ai_et0_v3_1",
-        "title": "Global Aridity Index and Potential Evapotranspiration (ET0) Database v3.1",
-        "url": "https://doi.org/10.6084/m9.figshare.7504448",
-        "local_files": "Global-AI_ET0__annual_v3_1.zip",
-        "note": "AI is stored as integer x 10000; the build multiplies by 1e-4."
-      },
-      {
-        "dataset_id": "worldclim_2_1_tavg",
-        "title": "WorldClim 2.1 monthly average temperature, 10 arc-min, 1970-2000",
-        "url": "https://doi.org/10.1038/s41597-018-0002-1",
-        "local_files": "wc2.1_10m_tavg.zip"
+        "dataset_id": "nasa_power_merra2_climatology_2001_2020",
+        "title": "NASA POWER climatology, MERRA-2 2001-2020 (PRECTOTCORR, T2M, TS_RANGE)",
+        "url": "https://power.larc.nasa.gov/docs/services/api/temporal/climatology/",
+        "used_for": "precipitation, annual and mean temperature, LST gap fill"
       },
       {
         "dataset_id": "zenodo_modis_lst_1km_2000_2020",
-        "title": "Long-term MODIS LST day-time and night-time temperatures at 1 km, 2000-2020",
+        "title": "Long-term MODIS Terra LST day-time and night-time, 1 km, 2000-2020",
         "url": "https://doi.org/10.5281/zenodo.6458406",
-        "local_files": "zenodo_lst_day.tif, zenodo_lst_night.tif",
-        "note": "int16 x 0.02 K; the predictor is (day - night) x 0.02."
+        "used_for": "LST diurnal range"
+      },
+      {
+        "dataset_id": "gibs_modis_terra_l3_ndvi_monthly_2023",
+        "title": "NASA GIBS MODIS_Terra_L3_NDVI_Monthly (MOD13C2), 2023 annual maximum",
+        "url": "https://nasa-gibs.github.io/gibs-api-docs/available-visualizations/",
+        "used_for": "vegetation"
       }
     ]
   },

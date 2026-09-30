@@ -1,41 +1,205 @@
-# Earth Analogue Finder
+# TerraNova
 
-Rank Earth's surface against an extraterrestrial base-site target. Give it the
-lunar south pole or Jezero Crater and it returns the 0.5° cells on Earth whose
-terrain, aridity, temperature swing and diurnal thermal behaviour match best,
-each with a deterministic, source-cited explanation of *why*.
+NASA Space Apps Challenge 2026: **Identify Earth Locations that Analog the
+Permanent Moon Base Locations and Mars.**
 
-Everything at request time is arithmetic on a fixed predictor stack plus fixed
-normalisation ranges. There is no model call, no randomness and no network
-access, so the same request always returns the same numbers and the same
-words.
+Pick a Moon or Mars base-site target, or type in your own. The app scores every 0.5° cell of Earth's land (78,247 cells) from NASA
+and partner data. It ranks the closest analogs on a 3D globe, explains every
+score criterion by criterion with sources, flags which sites are **new** and which are
+already-known analogs, and validates itself against catalogued analog sites.
+
+Scoring is deterministic arithmetic in `src/compute`, with no language model, no
+randomness and no network access at request time. The same request always returns
+the same numbers.
 
 ---
 
-## Quick start
+## Quick start (Windows, PowerShell)
 
-```bash
-pip install -r requirements.txt
-
-# 1. build the predictor stack (downloads ~1.1 GB on first run, then caches)
-python -m src.acquire.build_predictor_stack
-
-# 2. run the API plus the test UI
-uvicorn src.api.main:app --reload
+```powershell
+powershell -File scripts/setup.ps1            # .venv on Python 3.12, installs, runs tests
+$env:OFFLINE = "1"
+.venv\Scripts\uvicorn src.api.main:app --reload
 # open http://127.0.0.1:8000/
-
-# 3. tests and lint
-python -m pytest tests -q
-python -m ruff check src tests conftest.py
-python -m ruff format src tests conftest.py
 ```
 
-`cache/predictors.zarr` and `cache/derived/*.npy` are committed, so a fresh
-clone can skip step 1:
+Everything the demo needs is committed: `cache/predictors.zarr`, `cache/derived/*.npy`,
+the globe textures in `web/assets/`, three.js in `web/vendor/`, and the Natural Earth
+files in `cache/raw/`. It runs with Wi-Fi off.
+
+**Targets** (`data/targets.json`), grouped by region:
+
+| Group | Target | What it represents |
+|---|---|---|
+| Lunar south pole | Lunar South Pole (Shackleton rim) | Rugged, sunlit polar terrain |
+| Lunar south pole | Malapert Massif | Artemis III candidate region (NASA, Oct 2024); very rugged 5 km massif |
+| Lunar south pole | Haworth cold trap | Artemis III candidate region; permanently shadowed, never above ~40 K |
+| Mars | Jezero Crater | Perseverance site: smooth ancient lake floor |
+| Mars | Gale Crater | Curiosity site: crater floor rising into Mount Sharp |
+| Your own | Custom target | Type any values; untick criteria to leave them out |
+
+**How matching works.** Each target is a *signature*: a handful of numbers
+measured on the Moon or Mars (precipitation, vegetation, temperature swings,
+terrain). Every Earth land cell is scored against that one signature. It is not a
+comparison of pictures. A target can leave a criterion out (`"value": null`),
+for example terrain inside a shadowed crater that nobody has characterised. It can
+also set its own default weights; the Haworth cold trap switches on **mean
+temperature** at 2×, because "cold" is the defining challenge of a cold trap.
+
+**Using it:** drag to spin the globe; scroll or use **+ / − / ⌂** to zoom (on the flat
+map, drag to pan and double-click to zoom). Use the **Show top N** slider (5–100) to rank more or fewer sites, and the **Overlay**
+slider to fade the score layer over the imagery. Hover a numbered site, a known-analog diamond
+or a list entry for a satellite preview card. Rest the cursor on any land for a moment to
+preview that spot. Click anywhere to get its full breakdown.
+
+**Previews** come from NASA GIBS (Blue Marble Next Generation, cloud-free, 2°×2°) and
+are cached in `cache/thumbs/`. `python -m src.acquire.thumbs` prefetches the top 60 sites
+per target plus every known analog (132 images, 1.3 MB, committed). With `OFFLINE=1`,
+other locations fall back to a crop of the local basemap; run without `OFFLINE` to
+fetch any spot live.
+
+### God's Eye: 3D view of any site
+
+Open a site and press **God's Eye 3D view** (or `E`). The app descends into a 3D block of
+the site's real terrain, about 140 km across and centred on the scored 0.5° cell (outlined
+in orange):
+
+* **Terrain:** AWS Terrain Tiles at zoom 10 (~150 m), mosaicked and measured on the server
+  (`src/compute/terrain.py`). The panel reports relief, mean and 90th-percentile slope, and
+  the share of the cell a rover could drive (slopes under 15°). It then compares these, with
+  a warning about the different baselines, against the target's own measured slope.
+* **Imagery:** EOxCloudless Sentinel-2 2020 (ESA Copernicus data processed by EOX,
+  CC BY-NC-SA 4.0, fine for non-commercial student projects), or plain shaded relief.
+* **Sun:** any elevation and direction, with presets. **Lunar pole** sets the Sun 1.5° above
+  the horizon (the Moon's spin axis is tilted only ~1.5°), with a black sky and no sky light:
+  roughly how a lunar-pole site would look, lit the Moon's way.
+* **Surface:** satellite, shaded relief, **Elevation**, or **Slope** (coloured by steepness, with the 15°
+  rover limit marked), plus optional **contour lines** at an automatic interval.
+* **Probe:** click the terrain for elevation, slope and coordinates at that point.
+* **Profile:** "Measure a profile", click two points, and get the elevation profile with
+  climb, descent, the steepest grade and the share over 15°. Then **▶ Drive it** runs a rover
+  marker along the path.
+* **Play sun:** animates the Sun round the sky. Under the lunar preset it circles the
+  horizon, as it does at the lunar pole.
+* **True elevation:** the terrain opens at **true vertical scale (1×)**. A badge always shows
+  the vertical scale, and turns orange with "Heights ×N (exaggerated)" if you raise it.
+  Move the cursor over the terrain to read the real height in metres and the coordinates.
+  **Elevation** mode colours the ground by height, with a legend of the block's lowest and
+  highest points (the same full-resolution numbers as the stats panel).
+* **Controls:** optional height exaggeration (1–6×), cell outline toggle, compass, live
+  scale bar, and **Reset all**, which restores every option.
+
+What it cannot be: a live view. The imagery is a 2020 cloud-free composite, and there is no
+real-time imagery of the ground. Terrain tiles stop at about ±84° latitude, so Antarctic
+interior sites have no 3D view.
+
+Offline: terrain and imagery are cached in `cache/sitetiles/` (gitignored). Prefetch the
+demo sites on the presenting laptop:
 
 ```bash
-OFFLINE=1 python -m src.acquire.build_predictor_stack   # reassembles from cache
-OFFLINE=1 uvicorn src.api.main:app
+python -m src.acquire.sitetiles --top 5     # every target's top 5 sites, ~40 MB
+```
+
+### Discovery settings (right panel)
+
+The goal is new places, so by default the ranking shows **new sites only** (more than
+500 km from any catalogued analog), **spread out** (at least 800 km apart, at most 2 per
+country). All of this can be changed:
+
+* **New sites only**: hide places within 500 km of a known analog.
+* **Spread results**: minimum great-circle distance between results (0–2000 km).
+* **Max per country**: cap how many results come from one country (Natural Earth country
+  borders, so a cell counts for the country it lies in, not the nearest town's).
+* **Permissible error**: turns each criterion's exact target into a band. A cell scores
+  100% on that criterion anywhere within `error × confidence noise × range` of the target;
+  the band is wider for low-confidence target values.
+
+Validation always runs on the full, unfiltered score map. If the rules leave fewer sites
+than you asked for, the list says so ("Only 38 of 100 requested sites meet these rules…").
+All of these settings are saved in the shareable link.
+
+### How sure are we? (robustness)
+
+* **Stability** (badge on every site, bar in the site card): the target values are
+  perturbed 48 times with noise sized by their stated confidence (high 3%, medium 8%,
+  low 15% of the range, fixed seed). A site's stability is the share of runs in which it
+  stays in the top 1% of land. Most top sites score 80–100%.
+* **Leave one criterion out** (Validation tab): each criterion is dropped in turn and the
+  whole Earth re-scored. Vegetation is the most important: without it, AUC falls to
+  0.62–0.88 for four of the five targets. With any other criterion dropped it stays at 1.00.
+* **Do the datasets agree?** (Validation tab): independent datasets are checked against each
+  other. MODIS vs NASA POWER surface swing gives ρ = 0.92, precipitation vs NDVI 0.82,
+  latitude vs seasonality 0.60, and roughness vs slope 0.52. A test fails if a data rebuild
+  ever breaks this agreement.
+
+### Map colours
+
+| Layer | Colours |
+|---|---|
+| Analog score | orange, brighter = closer match (top half of land only) |
+| Precipitation | teal, dark (dry) to light (wet) |
+| Vegetation | tan (bare) to deep green (dense) |
+| Annual temperature range, day-night swing | white (small swing) to deep orange (large swing): a swing is a size, not a temperature |
+| Mean temperature | blue (cold), grey at 0 °C, red (hot) |
+| Slope, roughness, elevation | pale to dark phthalo green |
+
+Data-layer colours stop at the range that covers 99% of Earth's land.
+
+### Seeing a place
+
+* **Hover preview in 3D:** hovering a site shows the Blue Marble thumbnail at once. It then
+  upgrades to a small **rotating 3D terrain block**: Sentinel-2 2020 imagery blended with a
+  hillshade computed from the elevation tiles, so ridges and gullies read in depth. Built
+  on demand and cached in `cache/peek/`; prefetch with `python -m src.acquire.peek`.
+* **Latest NASA view** (site card): NASA's newest daily image of the place (VIIRS on
+  NOAA-20 via GIBS, 375 m, labelled with its date). This is as close to "live" as open
+  satellite imagery gets. It may show clouds and needs internet.
+* **Explore tab:** a scatter plot of any two criteria showing the ranked sites (orange
+  dots), known analogs (diamonds) and the target (crosshair). Hover or click any point.
+
+### Other tools
+
+* **Search** (`/`): towns, deserts, known analog sites, or typed coordinates (`-24.5, -69.25`).
+* **🎲 Surprise me** (`R`): fly to a random place in the top 2% that is not in your list.
+* **Pin to compare** (`P`): up to three sites side by side, criterion by criterion; the best
+  value in each row is highlighted.
+* **Guided tour** (`T` or **▶ Tour**): an 8-step walkthrough that drives the app. Useful for
+  recording the demo video.
+* **Keyboard** (`?` lists everything): `J`/`K` next/previous site, `G`/`M` globe/map,
+  `+`/`-`/`0` zoom, `V` validation, `Esc` close.
+* **Legend histogram:** how land cells are distributed across scores, with the top 10%
+  highlighted and cells vetoed to 0% counted separately.
+
+**Sharp imagery when zoomed.** The globe uses an 8192×4096 NASA Blue Marble
+texture (4096 on GPUs that cannot take 8K). Zooming in loads NASA GIBS detail tiles:
+10° tiles at ~2.2 km/px, then 2.5° tiles at ~540 m/px. Tiles are cached in `cache/tiles/`
+(gitignored). To make zoomed views work with Wi-Fi off, prefetch them on the demo laptop:
+
+```bash
+python -m src.acquire.tiles --level 1                  # whole world, 648 tiles, ~20 MB
+python -m src.acquire.tiles --level 2 --around-top 20  # sharp tiles around every target's top 20
+```
+
+The score overlay stays 0.5° cells (~55 km): that is the real resolution of the
+analysis, so it fades as you zoom in rather than pretending to be sharper.
+
+Shareable links open a specific state, which is useful for the demo video:
+
+| Link | Opens |
+|---|---|
+| `/#target=jezero_crater&site=1` | Jezero, the #1 site's detail card |
+| `/#target=malapert_massif&top=50` | Malapert Massif, top 50 sites |
+| `/#target=lunar_south_pole&tab=validation` | the validation tab |
+| `/#target=jezero_crater&view=map&layer=vegetation` | flat map, raw NDVI layer |
+| `/#dialog=method` | the "How it works" panel |
+| `/#target=lunar_south_pole&site=1&eye=1&sun=lunar` | God's Eye on the #1 site under a lunar polar sun |
+
+## Tests and lint
+
+```bash
+python -m pytest tests -q                       # 68 tests, ~3 s, no network
+python -m ruff check src tests scripts conftest.py
+OFFLINE=1 python -m scripts.check_controls      # validation table for every target
 ```
 
 ---
@@ -43,316 +207,160 @@ OFFLINE=1 uvicorn src.api.main:app
 ## How it works
 
 ```
-                src/acquire/build_predictor_stack.py   (stages: dem | aridity | climate | lst | assemble)
-                                     |
-   remote inputs --> cache/raw  -->  cache/derived/*.npy  -->  cache/predictors.zarr
-   (~1.1 GB)         (gitignored)      (per stage)             360 x 720 x 6 predictors
-                                     |                              |
-                                     |                    src/compute/similarity.py
-                                     |                     compute_similarity / rank_top
-                                     |                              |
-                                     |                    src/agents/rationale.py
-                                     |                       explain_cell (claims + caveats)
-                                     |                              |
-                                     |                    src/compute/gazetteer.py
-                                     |                       region / nearest-place label
-                                     |                              |
-                                     +------------------> src/api/main.py  -->  web/
-                                                            FastAPI           test UI
+ remote inputs (first run only)          cache/raw  ->  cache/derived/*.npy  ->  cache/predictors.zarr
+ Natural Earth land/lakes, AWS Terrain                     (one per stage)          360 x 720 x 7
+ tiles, NASA POWER, MODIS LST, GIBS NDVI                                                  |
+                                                                                           v
+ data/targets.json  --(earth_percentile resolved via data/normalization.json)-->  src/compute/similarity.py
+ data/known_analogs.json  ------------------------------------------------------>  src/compute/validation.py
+                                                                                   src/agents/rationale.py
+                                                                                           |
+                                                           src/api/main.py (FastAPI)  -->  web/ (three.js globe)
 ```
 
-Each pipeline stage is independently cacheable, so you can rebuild one input
-without redoing the rest:
+### Criteria
 
-```bash
-python -m src.acquire.build_predictor_stack --stage dem
-python -m src.acquire.build_predictor_stack --stage lst --force
-python -m src.acquire.build_predictor_stack --stage assemble
-python -m src.acquire.build_predictor_stack --offline
-```
+| Key | What it measures | Source |
+|---|---|---|
+| `precipitation` | Mean annual precipitation, mm/yr | NASA POWER (MERRA-2) 2001-2020 climatology |
+| `vegetation` | Annual max NDVI, clipped at 0 | NASA GIBS `MODIS_Terra_L3_NDVI_Monthly` 2023, colour map inverted exactly |
+| `annual_temperature_range` | Warmest minus coldest monthly mean T2M, K | NASA POWER (MERRA-2) |
+| `lst_diurnal_range` | Mean day minus night land-surface temperature, K | MODIS Terra LST 2000-2020 (Zenodo 6458406); gaps filled from NASA POWER `TS_RANGE` |
+| `slope` | Regional slope of the 0.5° elevation field, degrees | AWS Terrain Tiles (SRTM / GMTED / ETOPO1) |
+| `roughness` | RMS height residual over a ~28 km window, m | AWS Terrain Tiles |
+| `elevation` | Mean elevation, m (**weight 0 by default**) | AWS Terrain Tiles |
+| `mean_annual_temperature` | Mean of the 12 monthly T2M means, °C (**weight 0 by default**; cold-trap targets turn it on) | NASA POWER (MERRA-2) |
 
----
+The land mask is Natural Earth 1:50m land minus lakes. A cell is a candidate when at least 50% of it is land.
 
-## Repository layout
-
-| Path | What it is |
-| --- | --- |
-| `src/acquire/download.py` | URL -> `cache/raw` fetcher, `OFFLINE=1` support, atomic writes |
-| `src/acquire/build_predictor_stack.py` | The five-stage build: terrain, aridity, climate, LST, assemble |
-| `src/compute/similarity.py` | The scoring model: ranges, weights, similarities, ranking, determinism guard |
-| `src/compute/gazetteer.py` | Offline labelling: 59 region envelopes + 7,342 Natural Earth places |
-| `src/agents/rationale.py` | Rule-based explainer: headline, per-criterion claims, caveats |
-| `src/api/main.py` | FastAPI app; every endpoint is a thin wrapper over the two modules above |
-| `data/normalization.json` | Fixed min/max ranges, units, labels, default weights |
-| `data/targets.json` | Target profiles; every number carries `dataset_id` + `source_url` |
-| `data/gazetteer.json` | Hand-compiled physiographic envelopes (labelling only) |
-| `web/index.html`, `web/app.js` | Vanilla-JS test UI, no framework and no CDN |
-| `tests/test_similarity.py` | Model behaviour: maths, weights, NaN handling, determinism |
-| `tests/test_api.py` | HTTP surface: endpoints, error paths, provenance contract |
-| `cache/` | `raw/` (ignored), `derived/` and `predictors.zarr` (committed) |
-| `prototype_v1/` | Legacy scratch work, gitignored |
-
----
-
-## The grid and the land mask
-
-* CRS `EPSG:4326`, **360 rows x 720 columns**, 0.5° cells, row-major north to
-  south then west to east.
-* Cell centre: `lat = 90 - (row + 0.5) * 0.5`, `lon = -179.75 + col * 0.5`.
-* A cell is a **candidate** when `land_fraction >= 0.5`, where
-  `land_fraction` is the share of 30 arc-second Aridity Index pixels in the
-  cell carrying a valid value (the source encodes open ocean as `0` and fill
-  as `65535`). Every predictor is set to NaN below that threshold, so
-  `similarity.valid_mask(stack)` *is* the land mask.
-* **61,260** cells are candidates; **61,134** have all six predictors finite
-  and are scorable.
-* Terrain analysis happens on a 1/12° grid (4,320 x 8,640) built from 256
-  Web Mercator tiles at zoom 4, then block-averaged onto the 0.5° grid.
-
-The masking rule is also written into `cache/predictors.zarr` under
-`attrs["land_rule"]`, next to `attrs["grid"]`, `attrs["normalization"]`,
-`attrs["weights"]` and `attrs["sources"]`.
-
----
-
-## Predictors
-
-| Key | Label | Range (min .. max) | Unit | Dataset id | Source |
-| --- | --- | --- | --- | --- | --- |
-| `aridity` | Aridity index | 0 .. 1 | 1 | `global_ai_et0_v3_1` | https://doi.org/10.6084/m9.figshare.7504448 |
-| `annual_temperature_range` | Annual temperature range | 0 .. 160 | K | `worldclim_2_1_tavg` | https://doi.org/10.1038/s41597-018-0002-1 |
-| `elevation` | Elevation | -3000 .. 9000 | m | `aws_terrain_tiles_terrarium` | https://registry.opendata.aws/terrain-tiles/ |
-| `slope` | Regional slope | 0 .. 10 | degrees | `aws_terrain_tiles_terrarium` | https://registry.opendata.aws/terrain-tiles/ |
-| `roughness` | Surface roughness | 0 .. 400 | m | `aws_terrain_tiles_terrarium` | https://registry.opendata.aws/terrain-tiles/ |
-| `lst_diurnal_range` | LST diurnal range | 0 .. 130 | K | `zenodo_modis_lst_1km_2000_2020` | https://doi.org/10.5281/zenodo.6458406 |
-
-How each one is derived:
-
-* **Elevation** - Terrarium RGB tiles decoded to metres, reprojected to the
-  1/12° grid, masked to land, block-meaned to 0.5°.
-* **Slope** - horizontal gradient of the 0.5°-smoothed elevation field, in
-  degrees. It deliberately describes regional tilt, not local cliff angle.
-* **Roughness** - RMS residual of the 1/12° DEM about a least-squares plane
-  fitted over a 3x3 neighbourhood (~9.3 km spacing, ~28 km window),
-  block-averaged onto the cell.
-* **Aridity** - Global AI v3.1, rescaled `value * 1e-4`; ocean `0` and fill
-  `65535` are dropped before averaging.
-* **Annual temperature range** - WorldClim 2.1 warmest month mean minus
-  coldest month mean, 10 arc-min source averaged to the cell.
-* **LST diurnal range** - MODIS daytime minus nighttime LST, `value * 0.02`
-  K per count, warped from its native sinusoidal grid to the cell grid.
-
-Ranges live in `data/normalization.json` and are chosen **once at build time**
-from the observed Earth distribution plus the envelope of the target profiles.
-They are never derived from the data being scored, which is what makes scores
-reproducible and comparable between runs. Where the Earth distribution extends
-far past every target value - aridity, where all targets sit near 0 - the range
-is deliberately narrowed to the part of the distribution that can still match a
-target, so resolution near the target is preserved instead of saturating.
-
----
-
-## Target profiles
-
-Two targets ship in `data/targets.json`:
-
-| id | Body | Site |
-| --- | --- | --- |
-| `lunar_south_pole` | Moon | Lunar South Pole (Shackleton rim) |
-| `jezero_crater` | Mars | Jezero Crater, Mars |
-
-Each entry holds a `criteria` map whose every value is an object with
-`value`, `unit`, `dataset_id`, `source_url`, `definition_note` and
-`confidence` (plus optional `baseline`). `tests/test_similarity.py::test_target_profile_is_complete_and_cited`
-fails if any of that is missing, so provenance cannot rot silently.
-
----
-
-## Scoring model
-
-For criterion `k` with stored range `[min_k, max_k]` and target value `t_k`:
+### Scoring
 
 ```
-s_k(x)     = clip(1 - |x_k - t_k| / (max_k - min_k), 0, 1)
-score      = sum_k w_k * s_k  /  sum_k w_k
-contrib_k  = w_k * s_k        /  sum_k w_k          (contributions sum to score)
+t'_k   = clip(t_k, earth_min_k, earth_max_k)            # Earth-reachable target
+s_k    = clip(1 - |x_k - t'_k| / (max_k - min_k), 0, 1) # per-criterion similarity
+score  = prod_k s_k ** (w_k / sum w)                    # weighted geometric mean
 ```
 
-* Weights default to `1.0` for every criterion (uniform). Partial weight maps
-  are accepted; missing keys default to `1`. Zero weight excludes a criterion.
-  `NaN` in any predictor makes the cell's score `NaN` and it is masked out.
-* Ranking uses `rank_top`, which walks cells by descending score and enforces a
-  Chebyshev `min_separation_cells` radius so the top 20 are not 20 neighbours
-  of one place.
-* Everything is `float64` in, `float32` only at the encoding boundary.
+* **Beyond Earth.** When a target lies outside the range covering 99% of Earth's
+  land (0.5th–99.5th percentile, from `python -m src.acquire.calibrate`), it is
+  matched to the nearest edge of that range. The Moon's 120 K day-night swing, for
+  example, becomes Earth's ~27 K extreme. The API returns both values.
+* **Different scale.** Slope and roughness were measured over 5–75 m on the Moon and
+  Mars, but Earth cells are ~55 km. These targets are therefore given as an **Earth
+  percentile terrain class** (`earth_percentile` in `data/targets.json`, e.g. "rugged"
+  = 85th), with the original measurement kept in `measured_value`.
+* **Geometric mean.** One completely mismatched criterion vetoes the cell, so a
+  rainforest cannot score well by having the right slope.
 
----
+### Validation and novelty
 
-## Rationale and provenance
+`data/known_analogs.json` lists 12 catalogued analog sites (Haughton Crater, Axel
+Heiberg, McMurdo Dry Valleys, Atacama, MDRS, Meteor Crater, Craters of the Moon, Askja,
+and others). Each has coordinates and its analog use taken from the linked Wikipedia
+article. The list also has 8 densely vegetated reference points.
 
-`src/agents/rationale.py` is a **rule-based explainer, not a language model**.
-For a scored cell it returns:
-
-* `headline` - score against the target's short name and body, plus the label.
-* `claims` - one per finite criterion, ordered by similarity, each stating the
-  Earth value, the target value, a qualitative band and the similarity. Every
-  claim carries `dataset_id` and `source_url`.
-* `caveats` - emitted when a target criterion has `confidence != "high"`, a
-  non-empty `baseline`, or a non-empty `definition_note`, plus the target's
-  `units_note` about comparing bodies with different datums.
-* `drivers` - the top three criteria by similarity.
-
-The structure is deliberately LLM-shaped so a model could verbalise the same
-payload later without an API change.
+* **Validation** (`/api/validation`, the Validation tab) reports ROC-AUC: how often a
+  known analog for the target's body outscores a reference point. Sites chosen for
+  geology the model does not measure (Apollo geology training at Sudbury, Ries,
+  Kilauea; Río Tinto) are listed but not counted. A target can instead select its
+  positives by tag: the Haworth cold trap uses the `cold_polar` sites (Haughton, Axel
+  Heiberg, McMurdo Dry Valleys). Current result: **AUC 1.00 for all five targets**. Read it
+  as "the score separates analog-like land from green, humid land", not as proof that every
+  top site is an analog: the samples are small (3-5 analogs x 8 reference points).
+* **Novelty.** A ranked cell is `known` within 150 km of a catalogued site,
+  `near_known` within 500 km, and `new` otherwise.
 
 ---
 
 ## HTTP API
 
-Base URL `/`. All responses are JSON. Score surfaces and predictor grids are
-base64-encoded little-endian `float32`, so the browser decodes them straight
-into a `Float32Array`.
-
 | Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/api/health` | Readiness: grid shape, candidate count, offline flag, gazetteer status |
-| `GET` | `/api/criteria` | Normalisation ranges, units, descriptions and weight shares |
-| `GET` | `/api/targets` | The target catalogue with full criteria provenance |
-| `POST` | `/api/score` | Score every land cell for a target or a custom profile; returns ranked cells + rationales |
-| `GET` | `/api/scorefield` | Whole 360 x 720 score surface as base64 float32 |
-| `GET` | `/api/predictor` | One raw predictor grid (`?key=elevation`) |
-| `GET` | `/api/cell` | Predictors, label, ranges and sources for one coordinate |
-| `GET` | `/api/sources` | Dataset ids and URLs behind every number the API returns |
-| `GET` | `/` | Static `web/` UI |
+|---|---|---|
+| `GET` | `/api/health` | Grid shape, candidate cells, offline flag, build time |
+| `GET` | `/api/criteria` | Ranges, Earth envelope, units, sources, default weights |
+| `GET` | `/api/targets` | Targets with every criterion's value, Earth-effective value and citation |
+| `POST` | `/api/score` | Rank cells for a target or custom profile. `include_field: true` also returns the weighted score surface |
+| `POST` | `/api/explain?lat=&lon=` | Full breakdown for any location, in the same shape as a ranked result |
+| `GET` | `/api/validation?target_id=` | ROC-AUC and control-site percentiles |
+| `GET` | `/api/analogs` | The known-analog catalog |
+| `GET` | `/api/scorefield` | Score surface, base64 float32 |
+| `GET` | `/api/predictor?key=` | One raw predictor grid |
+| `GET` | `/api/cell?lat=&lon=` | Raw values, label and novelty for one cell |
+| `GET` | `/api/thumb?lat=&lon=` | NASA Blue Marble preview JPEG of the cell (cached; 404 offline if not cached) |
+| `GET` | `/api/tile/{z}/{row}/{col}.jpg` | Detail imagery tile (levels 1–2; cached, 404 offline if not cached) |
+| `GET` | `/api/site3d?lat=&lon=&target_id=` | God's Eye terrain: 256×256 heightmap, cell outline, relief and slope statistics |
+| `GET` | `/api/imagery/s2/{z}/{x}/{y}.jpg` | Sentinel-2 cloudless imagery tile for God's Eye (cached) |
+| `GET` | `/api/search?q=` | Places, regions, known analogs or `lat, lon` |
+| `POST` | `/api/robustness` | Monte Carlo stability of the ranked sites and leave-one-criterion-out sensitivity |
+| `GET` | `/api/datachecks` | Agreement between independent datasets (Spearman ρ) |
+| `GET` | `/api/peek?lat=&lon=` | Relief-shaded Sentinel-2 preview and a 64×64 heightmap for the 3D hover card |
+| `GET` | `/api/sources` | Every dataset, target citation, basemap credit and the LST gap-fill fit |
 
-### `POST /api/score`
+---
 
-```json
-{
-  "target_id": "lunar_south_pole",
-  "criteria": null,
-  "weights": {"aridity": 3},
-  "top_k": 20,
-  "min_separation_cells": 2
-}
-```
+## Rebuilding the data
 
-* `target_id` **or** `criteria` (a full six-key profile) is required;
-  supplying both means `criteria` wins.
-* Responses include `score_range`, and for each result: `rank`, `row`/`col`,
-  `lat`/`lon`, `score`, `label`, raw `values`, per-criterion `similarities`
-  and the full `rationale`.
-* Errors: `404` unknown target, `422` missing/unknown criteria or bad weights.
+Each stage caches its output, so you can rebuild one without redoing the others:
 
 ```bash
-curl -s -X POST http://127.0.0.1:8000/api/score \
-  -H "content-type: application/json" \
-  -d '{"target_id":"jezero_crater","top_k":5,"min_separation_cells":2}'
+python -m src.acquire.build_predictor_stack                # all stages (first run downloads ~100 MB)
+python -m src.acquire.build_predictor_stack --stage power  # land | dem | power | lst | vegetation | assemble
+python -m src.acquire.calibrate                            # rewrite Earth envelope + quantiles
+python -m src.acquire.basemaps                             # rebuild web/assets/{earth,moon,mars}.jpg
 ```
 
-### `GET /api/scorefield`
+The MODIS LST stage reads the cached `cache/derived/lst_modis.npy`. Rebuilding it from
+scratch downloads the Zenodo GeoTIFFs (~1 GB).
 
-`?target_id=...` and optional `?weights=aridity:3,slope:0.5` (comma-separated
-`key:weight` pairs). Returns `{shape, encoding, min, max, data}`.
+## Repository layout
 
----
-
-## Test UI
-
-`web/index.html` + `web/app.js` is a single-page vanilla-JS harness with no
-framework and no CDN:
-
-* target picker, per-criterion value sliders and weight sliders,
-* a canvas layer that shows either the score surface or any raw predictor,
-* click-to-inspect a cell (`/api/cell`),
-* a ranked table with the rationale expanded inline,
-* header badges for health, offline mode and candidate cell count.
-
----
-
-## Caching and offline mode
-
-`src/acquire/download.fetch` is the only thing that touches the network.
-
-* Every download lands in `cache/raw/` (gitignored, ~1.1 GB) and is reused on
-  the next run.
-* `OFFLINE=1` (or `offline=True`, or `--offline`) forbids the network; a
-  missing cache entry raises `FetchError` instead of silently succeeding.
-* `cache/derived/*.npy` are per-stage intermediates and are committed so
-  `--stage assemble` works without the raw inputs.
-* `cache/predictors.zarr` is committed so the API and tests run on a fresh
-  clone.
-
----
-
-## Tests and lint
-
-```bash
-python -m pytest tests -q          # 30 tests, ~2 s, no network
-python -m ruff check src tests conftest.py
-python -m ruff format src tests conftest.py
-```
-
-Ruff configuration lives in `ruff.toml` (`E4,E7,E9,F,I,UP,SIM,RUF`,
-line length 100). `conftest.py` puts the repo root on `sys.path`, so tests
-import `src.*` regardless of how pytest is invoked.
-
----
+| Path | What it is |
+|---|---|
+| `src/acquire/` | Downloaders and the build: `landmask`, `power`, `gibs_ndvi`, `basemaps`, `build_predictor_stack`, `calibrate` |
+| `src/compute/similarity.py` | Scoring model: ranges, Earth envelope, weights, geometric mean, ranking |
+| `src/compute/validation.py` | ROC-AUC validation and the novelty label |
+| `src/compute/terrain.py` | God's Eye terrain maths: tile geometry, Terrarium decoding, slope, relief and hillshade |
+| `src/compute/robustness.py` | Monte Carlo stability and leave-one-criterion-out sensitivity |
+| `src/compute/datachecks.py` | Cross-dataset consistency checks |
+| `src/compute/gazetteer.py` | Offline place names (82 region envelopes + Natural Earth places) |
+| `src/agents/rationale.py` | Rule-based explainer (not a language model); every claim carries a source |
+| `src/api/main.py` | FastAPI app |
+| `data/` | `targets.json`, `normalization.json`, `known_analogs.json`, `gazetteer.json` |
+| `web/` | `index.html`, `styles.css`, `app.js`, `globe.js`, `flatmap.js`, `godseye.js`, `colors.js`, `assets/`, `vendor/three/` |
+| `docs/` | `REVIEW.md`, `TEAM_PLAN.md`, `VIDEO_SCRIPT.md`, `AI_USE.md`, `DATA_REQUESTS.md` |
 
 ## Known limitations
 
-Be honest about these when presenting:
+1. **Resolution.** Cells are 0.5° (~55 km), so small features are averaged with their
+   surroundings. Mauna Kea's cell includes forested slopes; the Dry Valleys share their
+   cell with ice.
+2. **Terrain targets are classes, not measurements.** Matched-scale slope statistics
+   from PGDA Product 78 and HiRISE DTMs are the next step (see `docs/DATA_REQUESTS.md`).
+3. **Reanalysis precipitation.** NASA POWER (MERRA-2) can overestimate polar deserts:
+   Haughton reads 342 mm/yr.
+4. **LST gap fill.** Where MODIS has no data (mainly Antarctica, 24,190 cells), the
+   day-night swing is predicted from POWER `TS_RANGE` (linear fit, r = 0.92).
+5. **Latitude limits.** The elevation tiles stop at ±85.05°, so the far polar interiors
+   are not scored.
+6. **Sub-sites at one pole look alike at this resolution.** Malapert Massif and the
+   Shackleton rim share the same polar thermal data and differ only in terrain class, so
+   their Earth rankings are similar. Measured slope maps (PGDA Product 78) would separate
+   them; see `docs/DATA_REQUESTS.md`.
+7. **The cold trap matches ice sheets.** Earth's coldest, driest land is the East Antarctic
+   plateau, which is ice, not ice-cemented regolith. Telling ice sheets apart from ice-free
+   permafrost (the Dry Valleys) needs an ice-cover layer.
+8. **NDVI decoding.** GIBS NDVI is decoded to the lower edge of each 0.005-wide colour bin,
+   and "no data", water, ice and snow all read as 0 (no vegetation).
+9. **Novelty is distance-based.** "New" means more than 500 km from any catalogued analog's
+   footprint. The catalog is 12 sites; large regions (the Atacama) carry an extent, but a
+   place can be "new" to this catalog and still have been studied elsewhere.
 
-1. **Inland seas are not excluded.** The mask only excludes open ocean, so the
-   Caspian Depression reads as a top candidate (elevation -804 m at
-   38.25°N, 50.75°E). Fix: mask cells with no outlet, or require a minimum
-   distance to a coastline.
-2. **Antarctica and the far north are out of coverage.** The Aridity Index has
-   no data below about 60°S, so `land_fraction` is 0 there and every Antarctic
-   cell is NaN. Land rows only span 83.75°N to 59.25°S; cells above ~84°N are
-   also unmapped. The Web Mercator DEM itself stops at ±85.06°.
-3. **Baselines are not interchangeable.** Lunar and Martian values are
-   measured over different periods, instruments and datums than the Earth
-   predictors. The API attaches a `units_note` caveat to every rationale, but
-   the ranking is a screening tool, not a site survey.
-4. **`slope` is regional, not local.** It is the gradient of the 0.5°-smoothed
-   elevation field, so a cliff inside an otherwise flat cell scores as flat.
-5. **Labelling is best-effort.** Region envelopes are circles and overlap;
-   a cell is labelled by the smallest envelope containing it, falling back to
-   the nearest of 7,342 populated places.
+## Licence and credits
 
----
-
-## Extending it
-
-**Add a target.** Append an entry to `data/targets.json` with `id`, `name`,
-`body`, `latitude`, `longitude`, `summary`, `source_url`, `units_note` and a
-`criteria` map covering all six keys. `pytest` enforces the provenance fields.
-Nothing else changes - `/api/targets`, `/api/score` and the UI picker read the
-file.
-
-**Add a criterion.** Five places must agree, and `tests/test_similarity.py`
-will tell you:
-
-1. `src/compute/similarity.py` - add the key to `CRITERIA`.
-2. `data/normalization.json` - add `{min, max, unit, label, description}` and a
-   weight.
-3. `src/acquire/build_predictor_stack.py` - add a stage that produces the
-   array, and include it in `assemble()`.
-4. `data/targets.json` - add the value for every target.
-5. `src/api/main.py` - extend `_DATASET_IDS` and `_SOURCE_URLS`.
-
-**Change a range.** Edit `data/normalization.json`, then
-`python -m src.acquire.build_predictor_stack --stage assemble` to rewrite
-`cache/predictors.zarr` attrs. Scores and the UI follow automatically.
-
-**Change ranking.** `rank_top` in `src/compute/similarity.py` is the single
-place that decides which cells win; it currently uses a Chebyshev separation
-radius.
-
----
-
-## License
-
-See [LICENSE](LICENSE). Raw datasets remain under their own terms - see the
-`source_url` on every predictor and target.
+Code is Apache-2.0 (see [LICENSE](LICENSE)). three.js is MIT (`web/vendor/three/LICENSE`).
+Data sources keep their own terms; every dataset is listed in the app under **Data
+sources** and in `/api/sources`. Imagery: NASA Blue Marble Next Generation, NASA Moon
+Trek (LRO WAC), NASA Mars Trek (Viking MDIM 2.1). God's Eye imagery: EOxCloudless
+https://cloudless.eox.at by EOX IT Services GmbH (Contains modified Copernicus Sentinel
+data 2020), CC BY-NC-SA 4.0. God's Eye terrain: AWS Terrain Tiles. Place names: Natural
+Earth (public domain).
