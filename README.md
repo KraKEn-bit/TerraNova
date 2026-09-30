@@ -104,25 +104,25 @@ End-to-end pipeline (offline build → online query):
 
 ### Per-criterion similarity
 
-For criterion \(k\) with editorial range \([min_k, max_k]\), Earth envelope \([e^{min}_k, e^{max}_k]\), cell value \(x_k\), and target \(t_k\):
+For criterion $k$, stored editorial range $[\mathrm{lo}_k, \mathrm{hi}_k]$, Earth envelope $[e_{\mathrm{lo},k}, e_{\mathrm{hi},k}]$, cell value $x_k$, and target $t_k$:
 
-\[
-t'_k = \mathrm{clip}(t_k,\, e^{min}_k,\, e^{max}_k)
-\]
+$$
+t'_k = \mathrm{clip}\bigl(t_k,\; e_{\mathrm{lo},k},\; e_{\mathrm{hi},k}\bigr)
+$$
 
-\[
-s_k(x) = \mathrm{clip}\left(1 - \frac{|x_k - t'_k|}{max_k - min_k},\, 0,\, 1\right)
-\]
+$$
+s_k(x) = \mathrm{clip}\left(1 - \frac{\lvert x_k - t'_k \rvert}{\mathrm{hi}_k - \mathrm{lo}_k},\; 0,\; 1\right)
+$$
 
 Targets beyond anything on Earth (e.g. lunar 120 K day–night swing) are clipped to **Earth’s extreme** so the criterion means “as close as Earth gets.”
 
 ### Combined score (weighted geometric mean)
 
-\[
-\mathrm{score}(x) = \prod_k s_k(x)^{\,w_k / \sum_j w_j}
-\]
+$$
+\mathrm{score}(x) = \prod_k s_k(x)^{w_k / \sum_j w_j}
+$$
 
-Any \(s_k = 0\) **vetoes** the cell (e.g. dense vegetation cannot be saved by correct slope alone).
+Any $s_k = 0$ **vetoes** the cell (e.g. dense vegetation cannot be saved by correct slope alone).
 
 ### Criteria (Earth predictors)
 
