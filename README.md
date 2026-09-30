@@ -325,16 +325,14 @@ Details: [`docs/DATA_REQUESTS.md`](docs/DATA_REQUESTS.md), [`docs/REVIEW.md`](do
 
 | Member | Role (fill for submission) |
 |--------|---------------------------|
-| *Name* | Project lead / integration |
-| *Name* | Lunar targets & validation |
-| *Name* | Mars targets & science narrative |
-| *Name* | Earth data pipeline |
-| *Name* | Scoring & robustness |
-| *Name* | Frontend & demo |
+| *Rafsan Kabir* | Project lead / integration |
+| *Sazidul Karim Saad* | Lunar targets & validation |
+| *Mahfuz Kamal Sohan* | Mars targets & science narrative |
+| *Rayat Bin Nasir* | Earth data pipeline |
+| *Nafi Abrar Chowdhury* | Scoring & robustness |
+| *Farhan Fuad* | Frontend & demo |
 
 Repository: **https://github.com/Yakiyo/exo-earth**
-
-AI use disclosure: [`docs/AI_USE.md`](docs/AI_USE.md)
 
 ---
 
