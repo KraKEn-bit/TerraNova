@@ -26,7 +26,7 @@ Open-source discovery platform that scores **78,247** land cells on Earth (0.5°
 8. [Repository layout](#repository-layout)
 9. [Quick start](#quick-start)
 10. [HTTP API (summary)](#http-api-summary)
-11. [Roadmap and known limits](#roadmap-and-known-limits)
+11. [Target, status, and roadmap](#target-status-and-roadmap)
 12. [Team and credits](#team-and-credits)
 13. [License](#license)
 
@@ -60,6 +60,8 @@ TerraNova treats analog search as an **operational proxy problem**: match the **
 | **God's Eye 3D** | Local DEM mesh (~150 m), optional Sentinel-2 drape, **lunar low-sun** preset, slope/rover-trafficability stats, GeoJSON/CSV export. |
 
 **Design principle:** scoring at request time is **deterministic arithmetic** in `src/compute`—no LLM, no randomness, no network when `OFFLINE=1`.
+
+For **full vision vs what this repository ships today**, see [Target, status, and roadmap](#target-status-and-roadmap).
 
 ---
 
@@ -161,7 +163,7 @@ Reproduce:
 OFFLINE=1 python -m scripts.check_controls
 ```
 
-**Interpretation:** validation shows the score **separates barren/analog-like land from rainforests and humid farmland** on a 0.5° grid—it is a **screening tool**, not a field geologic survey. See [Known limits](#roadmap-and-known-limits).
+**Interpretation:** validation shows the score **separates barren/analog-like land from rainforests and humid farmland** on a 0.5° grid—it is a **screening tool**, not a field geologic survey. See [Target, status, and roadmap](#target-status-and-roadmap).
 
 Example control percentiles (lunar south pole target, from `check_controls`):
 
@@ -304,18 +306,62 @@ Interactive docs: **http://127.0.0.1:8000/docs** when the server is running.
 
 ---
 
-## Roadmap and known limits
+## Target, status, and roadmap
 
-**Roadmap (main hackathon):** PGDA LOLA 5 m site targets; CRISM/mineral ratios; ESA CCI permafrost for PSR proxy; field-access (`F_ops`) masks; cave/skylight layer; optional GEE screening funnel.
+### North-star target (TerraNova)
 
-**Current limits:**
+End-to-end analog discovery for Artemis and Mars surface ops:
 
-1. **0.5° cells (~55 km)** average small features with surroundings.
+1. **Planetary ground truth** — Site-scale signatures from NASA products (e.g. **PGDA LOLA Product 78** for lunar south-pole DTMs, **HiRISE/CTX** and **CRISM** for Mars) with cited literature bounds in `targets.json`.
+2. **Global Earth screening** — Multi-stage funnel (vegetation/barren gates → thermal and aridity → **30 m** terrain where survivors warrant it), using **NASA-first** layers plus partner DEMs (e.g. **Copernicus GLO-30**) where they fill polar or resolution gaps.
+3. **Transparent scoring** — Weighted geometric mean (any zero similarity vetoes the cell), explainable per-criterion breakdown, novelty vs catalog sites.
+4. **Field context** — Operational access masks (`F_ops`), optional **cave/skylight** proxy layer, and site-scale **God’s Eye** terrain for mission rehearsal.
+
+Scoring stays **deterministic code** in `src/compute`; AI assistants may help build the repo but **never** produce rank scores.
+
+### Shipped in this repository (Space Apps 2026 MVP)
+
+| Area | In this repo |
+|------|----------------|
+| **Targets** | Five built-in Moon/Mars profiles + custom JSON (`data/targets.json`); terrain slopes/roughness via **Earth-percentile classes** tied to literature, not yet PGDA/HiRISE rasters |
+| **Earth stack** | Prebuilt **0.5°** predictor cube (`cache/predictors.zarr`): NASA POWER, GIBS MODIS NDVI, MODIS LST (Zenodo) + gap-fill, AWS Terrain Tiles slope/roughness |
+| **Scoring & validation** | Geometric mean, Earth-envelope target clamping, ROC-AUC vs known analogs and negative controls |
+| **UI** | **FastAPI** + static **Three.js** globe, weight sliders, rule-based rationale cards, **God’s Eye** 3D (~150 m Terrarium + Sentinel-2 drape) |
+| **Novelty** | Distance to **12** catalogued analog sites (`data/known_analogs.json`) |
+
+This MVP proves **global screening + explainable ranks + local terrain preview** on open NASA-centric data at hackathon scale.
+
+### Not yet implemented (gaps vs full vision)
+
+| Planned capability | Status in this repo |
+|--------------------|---------------------|
+| **PGDA Product 78** (5 m lunar DEM/slope at site folders) downsampled to **30 m** for fair compare with Earth DEM | Not ingested; lunar terrain targets use percentile classes |
+| **HiRISE/CTX** site DTMs + **CRISM** mineral / hydration ratios for Mars targets | Not in predictor stack |
+| **GEE (or equivalent) multi-stage screening funnel** @ 1 km → 30 m on survivor tiles | Single global 0.5° pass only |
+| **Copernicus GLO-30** as primary global elevation (polar coverage) | AWS Terrarium / derived slopes at 0.5° only |
+| **ESA CCI permafrost** (MAGT) for PSR / cryic-soil proxy (e.g. Haworth mode) | Documented plan; see Haworth note in [Scoring model](#scoring-model) and [`docs/DATA_REQUESTS.md`](docs/DATA_REQUESTS.md) |
+| **Operational access** (`F_ops`: roads, WDPA, hazards) | Not scored |
+| **Cave / lava-tube skylight** detection layer (LROC / HiRISE pit catalogs) | Not scored |
+| **React + MapLibre** production frontend | Not in repo; current demo is Three.js + FastAPI |
+
+Team backlog and dataset requests: [`docs/DATA_REQUESTS.md`](docs/DATA_REQUESTS.md). Mentor-style gap analysis: [`docs/REVIEW.md`](docs/REVIEW.md).
+
+### Known limits (current MVP)
+
+1. **0.5° cells (~55 km)** average small features with surroundings—not a substitute for 30 m field geology.
 2. **Terrain targets** use Earth-percentile **classes** until PGDA/HiRISE site DTMs are ingested.
 3. **Polar scoring** gaps where elevation tiles and MODIS LST are missing (gap-fill documented in `/api/sources`).
 4. **Novelty** is distance to a **12-site** catalog—not a claim of “never studied anywhere.”
+5. **Physics ceiling:** open-Earth sites cannot replicate lunar PSR vacuum or exact regolith chemistry; scores mean **best terrestrial proxy** for listed stresses.
 
-Details: [`docs/DATA_REQUESTS.md`](docs/DATA_REQUESTS.md), [`docs/REVIEW.md`](docs/REVIEW.md).
+### Roadmap (post-MVP / extended hackathon)
+
+| Phase | Focus |
+|-------|--------|
+| **A — Planetary truth** | Ingest PGDA 78 + Mars ODE DTMs; refresh `targets.json` with measured slope/TRI/thermal stats |
+| **B — Earth resolution** | GEE funnel + Copernicus 30 m tiles; optional CRISM/M3-style mineral features where data allow |
+| **C — Mission ops** | Permafrost layer, `F_ops` masks, cave/skylight module; richer novelty catalog |
+| **D — Product UI** | React + MapLibre map client on the same FastAPI scoring API |
 
 ---
 
