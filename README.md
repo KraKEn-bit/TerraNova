@@ -10,7 +10,7 @@
 
 Open-source discovery platform that scores **78,247** land cells on Earth (0.5° resolution, ~55 km at the equator) against published **Moon and Mars base-site profiles**, ranks the best terrestrial analogs on an interactive **3D globe**, explains every criterion with **dataset citations**, flags **novel** candidates versus catalogued sites, and validates scores against **known analog benchmarks**.
 
-**Team [DaRK_MATTER](https://github.com/Yakiyo/exo-earth)**  · [Repository](https://github.com/Yakiyo/exo-earth)
+**Team [DaRK_MATTER]**  · [Repository](https://github.com/Yakiyo/exo-earth)
 
 ---
 
