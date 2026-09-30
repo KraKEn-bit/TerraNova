@@ -2,7 +2,7 @@
 
 [![NASA Space Apps Challenge 2026](https://img.shields.io/badge/NASA%20Space%20Apps-2026-005EB8?style=flat&logo=nasa&logoColor=white)](https://www.spaceappschallenge.org/)
 [![Challenge](https://img.shields.io/badge/Challenge-Earth%20Analog%20Discovery-2ea043?style=flat)](https://www.spaceappschallenge.org/)
-[![Team DaRK_MATTER](https://img.shields.io/badge/Team-DaRK__MATTER-f08a4b?style=flat)](https://github.com/Yakiyo/exo-earth)
+[![Team DaRK_MATTER](https://img.shields.io/badge/Team-DaRK__MATTER-f08a4b?style=flat)](https://github.com/Yakiyo/terra-nova)
 [![License](https://img.shields.io/badge/License-Apache--2.0-blue?style=flat)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat&logo=python&logoColor=white)](https://www.python.org/)
 
@@ -10,7 +10,7 @@
 
 Open-source discovery platform that scores **78,247** land cells on Earth (0.5° resolution, ~55 km at the equator) against published **Moon and Mars base-site profiles**, ranks the best terrestrial analogs on an interactive **3D globe**, explains every criterion with **dataset citations**, flags **novel** candidates versus catalogued sites, and validates scores against **known analog benchmarks**.
 
-**Team DaRK_MATTER**  · [Repository](https://github.com/Yakiyo/exo-earth)
+**Team DaRK_MATTER**  · [Repository](https://github.com/Yakiyo/terra-nova)
 
 ---
 
@@ -223,7 +223,7 @@ Full provenance JSON: **`GET /api/sources`**.
 ## Repository layout
 
 ```
-exo-earth/
+terra-nova/
 ├── data/
 │   ├── targets.json           # Moon/Mars target signatures + citations
 │   ├── normalization.json     # Ranges, Earth envelope, default weights
@@ -253,8 +253,8 @@ exo-earth/
 Requires [git](https://git-scm.com/) and [uv](https://github.com/astral-sh/uv) (`winget install astral-sh.uv`):
 
 ```powershell
-git clone -b feature/v2-nasa-data-globe https://github.com/Yakiyo/exo-earth.git
-cd exo-earth
+git clone -b feature/v2-nasa-data-globe https://github.com/Yakiyo/terra-nova.git
+cd terra-nova
 powershell -File scripts/setup.ps1
 $env:OFFLINE = "1"
 .venv\Scripts\uvicorn src.api.main:app --host 127.0.0.1 --port 8000 --reload
@@ -267,8 +267,8 @@ Alternative launcher (if present locally): `powershell -File start-app.ps1` with
 ### Linux / macOS
 
 ```bash
-git clone -b feature/v2-nasa-data-globe https://github.com/Yakiyo/exo-earth.git
-cd exo-earth
+git clone -b feature/v2-nasa-data-globe https://github.com/Yakiyo/terra-nova.git
+cd terra-nova
 uv venv --python 3.12 .venv
 uv pip install --python .venv/bin/python -r requirements.txt
 OFFLINE=1 .venv/bin/uvicorn src.api.main:app --host 127.0.0.1 --port 8000
